@@ -10,6 +10,8 @@
   live during a run. The modal Conversion window is gone.
 - During a run the cards stay visible but cannot be changed, and dropping fonts is disabled;
   the font list can still be scrolled.
+- After Pause or Cancel the footer shows Pausing… / Cancelling… until the font being
+  converted is done, and the log records the request.
 
 - Python 3.12 or later is now required. PySide6 6.12 can abort on Python 3.11 (a reference
   counting bug, PYSIDE-3474); from Python 3.12 it is harmless. The ready-to-run apps include

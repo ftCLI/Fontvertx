@@ -53,6 +53,9 @@ class StatusState(Enum):
 
 ACTIVE_STATES = (StatusState.RUNNING, StatusState.PAUSED)
 PAUSED_HINT = "The next font starts when you resume."
+# Pause and Cancel take effect between fonts: the font being converted finishes first.
+PAUSING_HINT = "Pauses when the current font is done."
+CANCELLING_HINT = "Stops when the current font is done."
 
 
 def format_elapsed(elapsed: float) -> str:
@@ -104,12 +107,64 @@ def state_tone(state: StatusState, notice_tone: str = "") -> str:
     return notice_tone
 
 
-def chip_content(state: StatusState, *, skipped: int = 0, failed: int = 0) -> tuple[str, str]:
-    """Text and icon name of the outcome chip."""
-    if state is StatusState.RUNNING:
-        return "Running", "sync_alt"
+class RunPhase(Enum):
+    """What an active run is doing, as the footer title and the chips show it."""
+
+    RUNNING = "running"
+    PAUSING = "pausing"  # Pause clicked: the current font is still converting
+    CANCELLING = "cancelling"  # Cancel clicked: the current font is still converting
+    PAUSED = "paused"
+
+
+def run_phase(
+    state: StatusState, *, pausing: bool = False, cancelling: bool = False
+) -> RunPhase | None:
+    """Phase of an active run; priority Paused > Cancelling > Pausing > Running."""
     if state is StatusState.PAUSED:
-        return "Paused", "pause"
+        return RunPhase.PAUSED
+    if state is not StatusState.RUNNING:
+        return None
+    if cancelling:
+        return RunPhase.CANCELLING
+    if pausing:
+        return RunPhase.PAUSING
+    return RunPhase.RUNNING
+
+
+# The one place for the wording of an active run: footer title, its hint, chip icon.
+PHASE_TITLES = {
+    RunPhase.RUNNING: "Converting…",
+    RunPhase.PAUSING: "Pausing…",
+    RunPhase.CANCELLING: "Cancelling…",
+    RunPhase.PAUSED: "Paused",
+}
+PHASE_HINTS = {
+    RunPhase.PAUSING: PAUSING_HINT,
+    RunPhase.CANCELLING: CANCELLING_HINT,
+    RunPhase.PAUSED: PAUSED_HINT,
+}
+PHASE_CHIP_ICONS = {
+    RunPhase.RUNNING: "sync_alt",
+    RunPhase.PAUSING: "pause",
+    RunPhase.CANCELLING: "close",
+    RunPhase.PAUSED: "pause",
+}
+
+
+def chip_content(
+    state: StatusState,
+    *,
+    skipped: int = 0,
+    failed: int = 0,
+    pausing: bool = False,
+    cancelling: bool = False,
+) -> tuple[str, str]:
+    """Text and icon name of the status chip (log window and footer result)."""
+    phase = run_phase(state, pausing=pausing, cancelling=cancelling)
+    if phase is not None:
+        # "Running" rather than the footer's "Converting…"; the other phases read the same.
+        text = "Running" if phase is RunPhase.RUNNING else PHASE_TITLES[phase]
+        return text, PHASE_CHIP_ICONS[phase]
     if state is StatusState.DONE:
         return "Done", "check"
     if state is StatusState.WARNING:
@@ -355,6 +410,7 @@ class StatusChip(QFrame):
         layout.addWidget(self.icon)
         layout.addWidget(self.label, 1)
         self._icons: dict[str, QIcon] = {}
+        self.icon_name = ""
 
     def text(self) -> str:
         return self.label.text()
@@ -366,6 +422,7 @@ class StatusChip(QFrame):
                 icon_name, LIGHT.on_primary, size=CHIP_ICON_SIZE
             )
         self.icon.set_icon(icon)
+        self.icon_name = icon_name
         self.label.setText(text)
         self.setAccessibleName(text)
         for widget in (self, self.label):
@@ -515,6 +572,7 @@ class StatusPill(QWidget):
         converted: int | None = None,
         current_file: str = "",
         cancelling: bool = False,
+        pausing: bool = False,
     ) -> None:
         converted = done if converted is None else converted
         text = (
@@ -553,13 +611,23 @@ class StatusPill(QWidget):
         self.run_view.setVisible(active)
         if active:
             paused = state is StatusState.PAUSED
-            self.run_title.setText(
-                "Paused" if paused else "Cancelling…" if cancelling else "Converting…"
-            )
+            phase = run_phase(state, pausing=pausing, cancelling=cancelling) or RunPhase.RUNNING
+            title = PHASE_TITLES[phase]
+            line = PHASE_HINTS.get(phase, current_file)
+            waiting = phase in (RunPhase.PAUSING, RunPhase.CANCELLING)
+            self.run_title.setText(title)
             self.run_counter.setText(f"{done} / {total}")
-            self.run_file.setText(PAUSED_HINT if paused else current_file)
+            self.run_file.setText(line)
+            # While waiting for the font being converted, its path stays one hover away.
+            self.run_file.setToolTip(current_file if waiting else "")
             self.run_file.elide_mode = (
-                Qt.TextElideMode.ElideRight if paused else Qt.TextElideMode.ElideMiddle
+                Qt.TextElideMode.ElideMiddle
+                if line == current_file and not waiting
+                else Qt.TextElideMode.ElideRight
+            )
+            # Announce what is shown.
+            self.setAccessibleDescription(
+                " · ".join(part for part in (title, f"{done} / {total}", line) if part)
             )
             self.progress.set_colors(
                 LIGHT.border_strong if paused else LIGHT.running_track,

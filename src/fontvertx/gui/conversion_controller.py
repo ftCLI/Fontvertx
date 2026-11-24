@@ -149,7 +149,8 @@ class ConversionController(QObject):
         self.outcome.elapsed = self.session_elapsed
 
     def refresh_progress_status(self) -> None:
-        if self.cancelling or self.run_state in (RunState.PAUSING, RunState.PAUSED):
+        # Keeps rendering while a pause or a cancel waits for the current font.
+        if self.run_state not in (RunState.RUNNING, RunState.PAUSING):
             return
         self.outcome.elapsed = self.elapsed()
         self.w._set_run_status(StatusState.RUNNING)
@@ -180,6 +181,15 @@ class ConversionController(QObject):
             self.run_state = RunState.PAUSING
             self.w.pause_button.setEnabled(False)
             self.worker.pause()
+            self.w._append_log(
+                LogEntry.create(
+                    "INFO",
+                    "conversion.pause_requested",
+                    "Pause requested: the current font finishes first",
+                    {"done": self.progress_done, "total": self.progress_total},
+                )
+            )
+            self.refresh_progress_status()
         elif self.run_state is RunState.PAUSED:
             self.worker.resume()
 
@@ -211,18 +221,31 @@ class ConversionController(QObject):
                 w._append_log(
                     LogEntry.create("INFO", "conversion.resumed", "Resumed conversion", {})
                 )
-                self.refresh_progress_status()
+            # Also when resuming because of a cancel: the footer shows "Cancelling…".
+            self.refresh_progress_status()
         w._update_buttons()
 
     def cancel(self) -> None:
         self.request_cancel()
 
     def request_cancel(self) -> None:
-        if self.worker is None:
-            return
+        if self.worker is None or self.cancelling:
+            return  # a second Cancel changes nothing
         self.w.cancel_button.setEnabled(False)
         self.cancelling = True
         self.worker.cancel()
+        if self.run_state is not RunState.PAUSED:
+            # From Paused the run stops almost at once; otherwise the font being
+            # converted finishes first.
+            self.w._append_log(
+                LogEntry.create(
+                    "INFO",
+                    "conversion.cancel_requested",
+                    "Cancel requested: the current font finishes first",
+                    {"done": self.progress_done, "total": self.progress_total},
+                )
+            )
+            self.refresh_progress_status()
         self.w._update_buttons()
 
     def finished(self, result: ConversionResult) -> None:

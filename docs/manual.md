@@ -381,13 +381,13 @@ While a run is in progress, the footer shows **Converting…**, the count of pro
 
 | Button | Effect |
 |---|---|
-| **Pause** / **Resume** | Pauses after the font being converted; Resume continues with the next one. While paused, the footer shows **Paused** and Resume is the highlighted button. |
-| **Cancel** | Stops the conversion. Files already converted are kept. |
+| **Pause** / **Resume** | Pauses after the font being converted: until it is done, the footer shows **Pausing…** and *Pauses when the current font is done.* (hover over that line to see the font's path). Resume continues with the next one. While paused, the footer shows **Paused** and Resume is the highlighted button. |
+| **Cancel** | Stops the conversion after the font being converted: until then, the footer shows **Cancelling…** and *Stops when the current font is done.* A paused run stops at once. Files already converted are kept. |
 | **View log** (eye icon) | Opens the log window (§8.3), which updates live during the run. |
 
 During the run the cards are dimmed and cannot be changed, and fonts cannot be dropped onto the window; you can still scroll the font list to look through it. Everything becomes available again when the run ends.
 
-The reported total time excludes pauses.
+With a large font this wait can take several seconds; the count, progress bar and time keep updating meanwhile, and the log records the request. The reported total time excludes pauses.
 
 ### 8.2 Outcome
 

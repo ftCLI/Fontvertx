@@ -1273,13 +1273,25 @@ class ConverterWindow(QMainWindow):
             detail=detail,
             current_file=str(current) if current is not None else "",
             cancelling=self._cancelling,
+            pausing=self._run_state is RunState.PAUSING,
         )
-        self._render_log_window(state)
+        self._render_log_window(
+            state, pausing=self._run_state is RunState.PAUSING, cancelling=self._cancelling
+        )
         self.status_zone.setCurrentWidget(self.status_pill)
 
-    def _render_log_window(self, state: StatusState) -> None:
+    def _render_log_window(
+        self, state: StatusState, *, pausing: bool = False, cancelling: bool = False
+    ) -> None:
+        """The log window's chip and summary follow the footer (same wording, same moments)."""
         outcome = self.converter.outcome
-        chip_text, chip_icon = chip_content(state, skipped=outcome.skipped, failed=outcome.failed)
+        chip_text, chip_icon = chip_content(
+            state,
+            skipped=outcome.skipped,
+            failed=outcome.failed,
+            pausing=pausing,
+            cancelling=cancelling,
+        )
         if state in ACTIVE_STATES:
             summary = [
                 (str(self.converter.progress_done), True),

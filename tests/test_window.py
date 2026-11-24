@@ -31,7 +31,7 @@ from fontvertx.gui.conversion_controller import RunOutcome
 from fontvertx.gui.logs import LogEntry
 from fontvertx.gui.panels.source_panel import CARD_INSET, list_status_text
 from fontvertx.gui.scanner import Source
-from fontvertx.gui.status_pill import StatusState, format_elapsed, format_message
+from fontvertx.gui.status_pill import StatusState, chip_content, format_elapsed, format_message
 from fontvertx.gui.styles import LIGHT, stylesheet
 from fontvertx.gui.window import ConverterWindow, _window_sizes
 from fontvertx.gui.worker import ConversionWorker, RunState, exception_type, format_duration
@@ -3338,6 +3338,183 @@ def test_pause_resume_state_machine(win: ConverterWindow) -> None:
     win._elapsed_timer.stop()
     win.worker = None
     win._on_paused_changed(True)
+
+
+def _converting(win: ConverterWindow, tmp_path: Path) -> ConversionWorker:
+    """A run in progress on a (not started) worker, converting font 2 of 4."""
+    worker = _fake_worker(win)
+    win._run_state = RunState.RUNNING
+    win.converter.outcome.total = 4
+    win.converter.progress_done = 1
+    win.converter.current_input = tmp_path / "big" / "font.ttf"
+    win.converter.session_started_at = 0.0
+    win._elapsed_timer.start()
+    win._set_run_status(StatusState.RUNNING)
+    win._update_buttons()
+    return worker
+
+
+def test_pause_request_says_the_current_font_finishes_first(
+    win: ConverterWindow, tmp_path: Path
+) -> None:
+    _converting(win, tmp_path)
+    pill = win.status_pill
+    current = str(tmp_path / "big" / "font.ttf")
+    assert pill.run_title.text() == "Converting…"
+    assert pill.run_file.text() == current
+    assert pill.run_file.toolTip() == ""
+    win.pause_button.click()
+    assert win._run_state is RunState.PAUSING
+    assert pill.run_title.text() == "Pausing…"
+    assert pill.run_file.text() == "Pauses when the current font is done."
+    assert pill.run_file.elide_mode is Qt.TextElideMode.ElideRight
+    assert pill.run_file.toolTip() == current
+    assert pill.accessibleDescription() == (
+        "Pausing… · 1 / 4 · Pauses when the current font is done."
+    )
+    assert win._log_entries[-1].event == "conversion.pause_requested"
+    assert win._log_entries[-1].message == "Pause requested: the current font finishes first"
+    assert win.log.item(win.log.count() - 1).text() == win._log_entries[-1].display_text()
+    # Buttons keep their labels; Pause waits, Cancel stays available.
+    assert win.pause_button.text() == "Pause" and not win.pause_button.isEnabled()
+    assert win.cancel_button.text() == "Cancel" and win.cancel_button.isEnabled()
+    # Progress and timer refreshes keep rendering, and keep "Pausing…".
+    win._on_conversion_progress(2, 4)
+    assert pill.run_counter.text() == "2 / 4"
+    assert win.progress.value() == 2
+    win._refresh_progress_status()
+    assert pill.run_title.text() == "Pausing…"
+    assert win._elapsed_timer.isActive()
+    win._on_paused_changed(True)
+    assert pill.run_title.text() == "Paused"
+    assert pill.run_file.text() == "The next font starts when you resume."
+    assert pill.run_file.toolTip() == ""
+    assert pill.accessibleDescription().startswith("Paused · 2 / 4")
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def test_cancel_request_says_the_current_font_finishes_first(
+    win: ConverterWindow, tmp_path: Path
+) -> None:
+    worker = _converting(win, tmp_path)
+    pill = win.status_pill
+    win.cancel_button.click()
+    assert win._cancelling and worker._running.is_set()
+    assert pill.run_title.text() == "Cancelling…"
+    assert pill.run_file.text() == "Stops when the current font is done."
+    assert pill.run_file.toolTip() == str(tmp_path / "big" / "font.ttf")
+    assert pill.accessibleDescription() == (
+        "Cancelling… · 1 / 4 · Stops when the current font is done."
+    )
+    assert win._log_entries[-1].event == "conversion.cancel_requested"
+    assert win._log_entries[-1].message == "Cancel requested: the current font finishes first"
+    entries = len(win._log_entries)
+    win._request_cancel()
+    assert len(win._log_entries) == entries
+    win._on_conversion_progress(2, 4)
+    assert pill.run_title.text() == "Cancelling…"
+    assert pill.run_counter.text() == "2 / 4"
+    assert win.cancel_button.text() == "Cancel" and not win.cancel_button.isEnabled()
+    assert not win.pause_button.isEnabled()
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def test_cancel_while_pausing_wins_over_pausing(win: ConverterWindow, tmp_path: Path) -> None:
+    _converting(win, tmp_path)
+    win.pause_button.click()
+    win._request_cancel()
+    assert win.status_pill.run_title.text() == "Cancelling…"
+    # The pause no longer happens once the run is cancelling.
+    win._on_paused_changed(True)
+    assert win._run_state is RunState.PAUSING
+    assert win.status_pill.run_title.text() == "Cancelling…"
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def test_cancel_from_paused_logs_no_request(win: ConverterWindow, tmp_path: Path) -> None:
+    worker = _converting(win, tmp_path)
+    win._toggle_pause()
+    win._on_paused_changed(True)
+    entries = len(win._log_entries)
+    win._request_cancel()
+    assert worker._running.is_set()
+    assert len(win._log_entries) == entries
+    assert win.status_pill.run_title.text() == "Paused"
+    # The worker resumes to stop: the footer renders the cancel at once.
+    win._on_paused_changed(False)
+    assert win._run_state is RunState.RUNNING
+    assert win.status_pill.run_title.text() == "Cancelling…"
+    assert not any(entry.event == "conversion.resumed" for entry in win._log_entries)
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def _chip(win: ConverterWindow) -> tuple[str, str, str]:
+    chip = win.log_window.chip
+    return chip.text(), chip.icon_name, chip.property("tone")
+
+
+@pytest.mark.parametrize(
+    ("state", "pausing", "cancelling", "expected"),
+    [
+        (StatusState.RUNNING, False, False, ("Running", "sync_alt")),
+        (StatusState.RUNNING, True, False, ("Pausing…", "pause")),
+        (StatusState.RUNNING, False, True, ("Cancelling…", "close")),
+        (StatusState.RUNNING, True, True, ("Cancelling…", "close")),
+        (StatusState.PAUSED, True, True, ("Paused", "pause")),
+        (StatusState.CANCELLED, False, True, ("Cancelled", "close")),
+        (StatusState.DONE, True, True, ("Done", "check")),
+    ],
+)
+def test_chip_content_follows_the_run_phase(
+    state: StatusState, pausing: bool, cancelling: bool, expected: tuple[str, str]
+) -> None:
+    assert chip_content(state, pausing=pausing, cancelling=cancelling) == expected
+
+
+def test_log_window_chip_follows_pausing(win: ConverterWindow, tmp_path: Path) -> None:
+    _converting(win, tmp_path)
+    assert _chip(win) == ("Running", "sync_alt", "running")
+    win.pause_button.click()
+    assert _chip(win) == ("Pausing…", "pause", "running")
+    assert win.log_window.chip.text() == win.status_pill.run_title.text()
+    # While the current font finishes, refreshes keep the chip and the live summary.
+    win._on_conversion_progress(2, 4)
+    assert _chip(win) == ("Pausing…", "pause", "running")
+    assert win.log_window.summary.text().startswith("2 / 4 · ")
+    win._on_paused_changed(True)
+    assert _chip(win) == ("Paused", "pause", "warning")
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def test_log_window_chip_follows_cancelling(win: ConverterWindow, tmp_path: Path) -> None:
+    _converting(win, tmp_path)
+    win.cancel_button.click()
+    assert _chip(win) == ("Cancelling…", "close", "running")
+    assert win.log_window.chip.text() == win.status_pill.run_title.text()
+    win._on_conversion_progress(2, 4)
+    assert _chip(win) == ("Cancelling…", "close", "running")
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),), cancelled=True))
+    assert _chip(win) == ("Cancelled", "close", "neutral")
+    win.worker = None
+
+
+def test_log_window_chip_cancel_while_paused(win: ConverterWindow, tmp_path: Path) -> None:
+    _converting(win, tmp_path)
+    win._toggle_pause()
+    win._on_paused_changed(True)
+    assert _chip(win) == ("Paused", "pause", "warning")
+    win._request_cancel()
+    assert _chip(win) == ("Paused", "pause", "warning")
+    win._on_paused_changed(False)  # resumes only to stop
+    assert _chip(win) == ("Cancelling…", "close", "running")
+    _finished(win, ConversionResult(cancelled=True))
+    assert _chip(win) == ("Cancelled", "close", "neutral")
+    win.worker = None
 
 
 def test_cancel_conversion_without_confirmation(win: ConverterWindow) -> None:
