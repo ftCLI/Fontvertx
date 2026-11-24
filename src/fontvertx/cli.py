@@ -108,7 +108,7 @@ class GroupedCommand(click.Command):
                     formatter.write_dl(records)
 
 
-def _general_options(func: _F) -> _F:
+def _general_options[F: Callable[..., Any]](func: F) -> F:
     """Attach the options shared by every profile (applied in reverse display order)."""
     for option in (
         grouped_option(

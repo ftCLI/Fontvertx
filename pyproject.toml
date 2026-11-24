@@ -8,7 +8,7 @@ license-files = ["LICENSE"]
 authors = [
     { name = "Cesare Gilento", email = "ftCLI@proton.me" }
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "cffsubr>=0.4.0",
     "click>=8.5.1,<9",
@@ -25,7 +25,6 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -64,7 +63,7 @@ testpaths = ["tests"]
 addopts = "--cov=fontvertx --cov-report=term-missing:skip-covered --cov-fail-under=90"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 100
 src = ["src"]
 
@@ -77,7 +76,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 files = ["src"]
 warn_unused_configs = true
 check_untyped_defs = true

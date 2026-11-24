@@ -5,7 +5,6 @@ import re
 import time
 from dataclasses import replace
 from pathlib import Path
-from typing import TypeVar
 
 from fontTools.misc.cliTools import makeOutputFileName
 from fontTools.ttLib import TTFont, TTLibError
@@ -71,9 +70,6 @@ def build_output_file_name(font: Font, output_dir: Path | None, overwrite: bool 
     return font.get_file_path(output_dir=output_dir, overwrite=overwrite, extension=extension)
 
 
-_S = TypeVar("_S")
-
-
 def instance_label(coordinates: tuple[tuple[str, float], ...]) -> str:
     """Describe an instance location from its axis values, e.g. ``opsz11 wght450``."""
     return " ".join(f"{tag}{value:g}" for tag, value in coordinates)
@@ -86,7 +82,7 @@ def instance_stem(input_path: Path, name: str | None, label: str) -> str:
     return f"{base_stem}-{sanitize_filename(suffix)}"
 
 
-def _expect_settings(settings: object, kind: type[_S]) -> _S:
+def _expect_settings[S](settings: object, kind: type[S]) -> S:
     """Return settings as the expected type, or raise if the request is inconsistent."""
     if not isinstance(settings, kind):
         raise TypeError(f"Expected {kind.__name__}, got {type(settings).__name__}")

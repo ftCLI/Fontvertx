@@ -1,7 +1,6 @@
 import gc
 import os
 import shutil
-import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -17,37 +16,6 @@ def _isolated_log_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Keep setup_logging (called by the CLI and the GUI entry point) away from
     # the real per-user log directory during tests.
     monkeypatch.setenv("FONTVERTX_LOG_DIR", str(tmp_path / "logs"))
-
-
-# A drop of None's reference count larger than this, across one test, is a refcount
-# bug in a C extension (normal code never lowers it: tests only add references).
-NONE_REFCOUNT_DROP_LIMIT = 50
-
-
-@pytest.fixture(autouse=True)
-def _none_refcount_guard() -> Iterator[None]:
-    """Name the test whose C extension calls release references to None they never took.
-
-    Before Python 3.12 None is not immortal: such a bug (seen with PySide6 on Linux and
-    Python 3.11) lowers None's reference count at every call until None is deallocated
-    and the interpreter aborts ("Fatal Python error: none_dealloc"), far from the cause.
-    Checking the count around each test turns that into an error on the guilty test.
-    Defined before _destroy_qt_widgets, so it also covers the widget cleanup.
-    """
-    if sys.version_info >= (3, 12):  # None is immortal: its count never changes
-        yield
-        return
-    gc.collect()
-    before = sys.getrefcount(None)
-    yield
-    gc.collect()
-    drop = before - sys.getrefcount(None)
-    if drop > NONE_REFCOUNT_DROP_LIMIT:
-        pytest.fail(
-            f"None lost {drop} references during this test: a C extension call "
-            "releases None without owning it (refcount bug)",
-            pytrace=False,
-        )
 
 
 @pytest.fixture(autouse=True)

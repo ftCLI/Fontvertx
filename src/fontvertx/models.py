@@ -4,12 +4,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import ClassVar, Literal, TypeAlias
+from typing import ClassVar, Literal
 
-ConversionKind: TypeAlias = Literal[
+type ConversionKind = Literal[
     "ttf2otf", "otf2ttf", "ft2wf", "woff2ft", "woff22ft", "ttc2sfnt", "var2static"
 ]
-WebFormat: TypeAlias = Literal["woff", "woff2"]
+type WebFormat = Literal["woff", "woff2"]
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ class VarToStaticOptions(ConversionOptions):
     subroutinize: bool = True  # PostScript outlines only
 
 
-ConversionSettings: TypeAlias = (
+type ConversionSettings = (
     TtfToOtfOptions
     | OtfToTtfOptions
     | SfntToWebOptions
@@ -140,12 +140,12 @@ class ConversionProgress:
     total: int
 
 
-ProgressCallback: TypeAlias = Callable[[ConversionProgress], None]
-OutcomeCallback: TypeAlias = Callable[[FontOutcome], None]
-FontStartCallback: TypeAlias = Callable[[Path], None]
-CancellationCheck: TypeAlias = Callable[[], bool]
-LogCallback: TypeAlias = Callable[[str], None]
-PauseWait: TypeAlias = Callable[[], None]
+type ProgressCallback = Callable[[ConversionProgress], None]
+type OutcomeCallback = Callable[[FontOutcome], None]
+type FontStartCallback = Callable[[Path], None]
+type CancellationCheck = Callable[[], bool]
+type LogCallback = Callable[[str], None]
+type PauseWait = Callable[[], None]
 
 
 @dataclass(frozen=True)
