@@ -47,7 +47,7 @@ Fontvertx is built on established tools: FontTools, ttfautohint, cffsubr and Ski
 | Installation | Requirements |
 |---|---|
 | Ready-to-run app (§2.2) | 64-bit Windows 10 or 11, or macOS 14.4 or later on a Mac with Apple Silicon (M1 or later). No Python needed. |
-| From PyPI or from source (§2.3–2.5) | Python **3.11** or later; for the GUI, a desktop environment supported by Qt 6 (Windows, macOS, Linux). |
+| From PyPI or from source (§2.3–2.5) | Python **3.12** or later (with uv it is downloaded automatically if needed, §2.3); for the GUI, a desktop environment supported by Qt 6 (Windows, macOS, Linux). |
 
 ### 2.2 Ready-to-run app (Windows and macOS)
 
@@ -90,7 +90,11 @@ fontvertx
 - To try it without installing: `uvx fontvertx`
 - To upgrade: `uv tool upgrade fontvertx`
 
+You do not need to install Python yourself: if your system has no Python 3.12 or later (for example Debian 12 or Ubuntu 22.04), uv downloads one for Fontvertx and keeps it separate from the system Python.
+
 ### 2.4 With pip, from PyPI
+
+This method needs Python 3.12 or later already installed. Check the version first: `py --version` on Windows, `python3 --version` on macOS and Linux. If it is older, install a newer Python from [python.org](https://www.python.org/downloads/) or use uv (§2.3).
 
 **Windows (PowerShell):**
 
@@ -566,6 +570,7 @@ On macOS, Ctrl maps to Cmd following Qt conventions.
 |---|---|
 | Windows shows *Windows protected your PC* | The ready-to-run app is not signed. Click **More info** → **Run anyway** (§2.2). |
 | macOS won't open the app, or says it *is damaged* | The app is not notarized. Use **Open Anyway** in Privacy & Security, or remove the quarantine flag with `xattr` (§2.2). |
+| pip reports *No matching distribution found for fontvertx*, or *requires a different Python* | Your Python is older than 3.12. Install with uv, which brings its own Python (§2.3), or install Python 3.12 or later (§2.4). |
 | The **Convert** button is disabled | Choose a profile (*Choose a conversion profile first.*) and select at least one compatible font. |
 | *No compatible fonts for this conversion* | No font in the list suits the profile: check the incompatibility reasons (§4.3) or change profile. |
 | *Choose at least one web font format to continue.* | In the WOFF / WOFF2 profile, enable at least one of the two formats. |

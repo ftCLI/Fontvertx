@@ -688,8 +688,15 @@ class ConverterWindow(QMainWindow):
             extension,
             self,
         )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.organization_levels = dialog.levels
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+            levels = dialog.levels
+        finally:
+            # A child of the window: without this, every closed dialog stays alive
+            # (hidden) until the window is destroyed.
+            dialog.deleteLater()
+        if accepted:
+            self.organization_levels = levels
             if self._active_profile is not None:
                 self.store.set_organization_levels(self._active_profile, self.organization_levels)
             self._update_organization_button()
@@ -1266,9 +1273,14 @@ class ConverterWindow(QMainWindow):
         dialog.button(QMessageBox.StandardButton.Yes).setText("I have permission")
         remember = QCheckBox("Remember this choice")
         dialog.setCheckBox(remember)
-        if dialog.exec() != QMessageBox.StandardButton.Yes:
+        try:
+            accepted = dialog.exec() == QMessageBox.StandardButton.Yes
+            remembered = remember.isChecked()
+        finally:
+            dialog.deleteLater()  # a child of the window: do not keep it once closed
+        if not accepted:
             return False
-        if remember.isChecked():
+        if remembered:
             self.store.set_bool(MODIFY_RIGHTS_KEY, True)
         return True
 
@@ -1357,8 +1369,11 @@ class ConverterWindow(QMainWindow):
                 resume = box.addButton("Resume", QMessageBox.ButtonRole.AcceptRole)
                 cancel = box.addButton("Cancel conversion", QMessageBox.ButtonRole.DestructiveRole)
                 box.addButton("Keep window open", QMessageBox.ButtonRole.RejectRole)
-                box.exec()
-                clicked = box.clickedButton()
+                try:
+                    box.exec()
+                    clicked = box.clickedButton()
+                finally:
+                    box.deleteLater()  # a child of the window: do not keep it once closed
                 if clicked is cancel:
                     self._close_when_finished = True
                     self._request_cancel()

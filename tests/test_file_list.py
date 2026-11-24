@@ -1,5 +1,7 @@
 import gc
-from collections.abc import Callable
+import weakref
+from collections import Counter
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from threading import Event
 
@@ -38,8 +40,12 @@ def ttc_info() -> FontInfo:
 
 
 @pytest.fixture
-def file_list(qapp: QApplication) -> FontFileList:
-    return FontFileList(FileTable(), lambda: TTF_PROFILE)
+def file_list(qapp: QApplication) -> Iterator[FontFileList]:
+    # The FileTable is a top-level widget (the FontFileList is its child): the autouse
+    # cleanup in conftest.py deletes both once the scan threads are stopped here.
+    files = FontFileList(FileTable(), lambda: TTF_PROFILE)
+    yield files
+    files.shutdown()
 
 
 def fill(file_list: FontFileList) -> None:
@@ -260,20 +266,38 @@ def test_format_and_outline_badges_use_token_colors(file_list: FontFileList) -> 
     option.initFrom(view)
     option.widget = view
     option.rect = QRect(0, 0, 100, 30)
-    image = QImage(100, 30, QImage.Format.Format_ARGB32)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    # Format chips: pill-shaped, accent tint, sampled at their center.
-    for column, color, sample_x in (
-        (1, LIGHT.accent_tint, 50),
-        (2, LIGHT.accent_tint, 50),
-    ):
+    # Format and outline chips: an accent-tint pill with accent text, on the row
+    # background. A single pixel at the center may fall on a letter (text metrics differ
+    # between systems), so look at all painted pixels except the row background (the
+    # corner color, which the pill never reaches): the pill covers more area than the text.
+    for column in (1, 2):
+        image = QImage(100, 30, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
         delegate = view.itemDelegateForColumn(column)
         assert isinstance(delegate, FontBadgeDelegate)
         delegate.paint(painter, option, model.index(0, column))
-        assert image.pixelColor(sample_x, 15).name() == color
-        image.fill(Qt.GlobalColor.transparent)
-    painter.end()
+        painter.end()
+        row_background = image.pixelColor(0, 0).name()
+        colors = Counter(
+            color.name()
+            for x in range(image.width())
+            for y in range(image.height())
+            if (color := image.pixelColor(x, y)).alpha() == 255 and color.name() != row_background
+        )
+        assert colors.most_common(1)[0][0] == LIGHT.accent_tint, column
+        # The accent text is antialiased: its darkest pixels are close to the accent,
+        # not necessarily equal to it (FreeType renders no exact match).
+        accent = QColor(LIGHT.accent)
+        assert any(
+            max(
+                abs(color.red() - accent.red()),
+                abs(color.green() - accent.green()),
+                abs(color.blue() - accent.blue()),
+            )
+            <= 16
+            for color in map(QColor, colors)
+        ), column
 
 
 def test_proxy_sorts_upm_numerically(qapp: QApplication) -> None:
@@ -333,8 +357,7 @@ def test_selection_helpers(file_list: FontFileList) -> None:
     assert file_list.selected_paths() == []
 
 
-def test_visible_check_state_reports_partial_and_none(qapp: QApplication) -> None:
-    file_list = FontFileList(FileTable(), lambda: TTF_PROFILE)
+def test_visible_check_state_reports_partial_and_none(file_list: FontFileList) -> None:
     assert file_list.visible_check_state() is None
 
     file_list.add_font(Path("a.ttf"), "a.ttf", ttf_info("a.ttf"), True)
@@ -349,7 +372,6 @@ def test_scan_reports_progress_fonts_and_finish(
     file_list: FontFileList, fonts_dir: Path, qtbot_wait: Callable[..., None]
 ) -> None:
     found: list[Path] = []
-    gc.collect()  # widgets left by earlier tests must not be destroyed from the worker thread
     progress: list[tuple[int, int]] = []
     finished: list[bool] = []
     file_list.font_found.connect(lambda path, info: found.append(path))
@@ -373,6 +395,44 @@ def test_scan_reports_progress_fonts_and_finish(
     assert progress[0] == (0, 0)
     assert progress[-1][0] == progress[-1][1]
     file_list.shutdown()
+
+
+def test_stopped_and_shut_down_scans_release_their_workers(
+    file_list: FontFileList, fonts_dir: Path, qtbot_wait: Callable[..., None]
+) -> None:
+    # A worker must not be left in a reference cycle with its connected lambdas: the
+    # garbage collector could then destroy the QThread later, from another thread.
+    # Stopped workers are released by the queued finished signal (_on_finished
+    # disconnects the lambdas), on the next pass of the event loop: no collector needed.
+    gc.disable()
+    try:
+        finished: list[bool] = []
+        file_list.scan_finished.connect(lambda: finished.append(True))
+        file_list.start([Source(fonts_dir)])
+        first = weakref.ref(file_list._worker)
+        qtbot_wait(lambda: bool(finished))
+        assert first() is None  # released by _on_finished
+
+        # Stopped after its thread ended but before its finished signal was handled.
+        file_list.start([Source(fonts_dir)])
+        worker = file_list._worker
+        assert worker is not None
+        worker.wait()
+        second = weakref.ref(worker)
+        del worker
+        file_list.stop()
+
+        # Stopped while running, then released by shutdown().
+        file_list.start([Source(fonts_dir)])
+        third = weakref.ref(file_list._worker)
+        file_list.stop()
+        file_list.shutdown()
+        assert file_list._retired_workers == []
+        QApplication.processEvents()  # pending queued calls may still hold a worker
+        assert second() is None
+        assert third() is None
+    finally:
+        gc.enable()
 
 
 def test_stop_ignores_results_from_retired_scan(

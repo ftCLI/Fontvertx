@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -370,7 +370,7 @@ def test_table_header_aligns_when_scrollbar_appears(qapp: QApplication) -> None:
 
 @pytest.mark.parametrize("fill_header", [False, True])
 def test_table_scrollbar_header_filler_tracks_visibility(
-    qapp: QApplication, fill_header: bool
+    qapp: QApplication, fill_header: bool, qtbot_wait: Callable[..., None]
 ) -> None:
     table = FileTable()
     table.setStyleSheet(build_stylesheet(LIGHT))
@@ -391,8 +391,10 @@ def test_table_scrollbar_header_filler_tracks_visibility(
     for rows, width in ((100, 650), (100, 700), (0, 700), (100, 700), (0, 650)):
         table.resize(width, 200)
         model.setRowCount(rows)
-        QTest.qWait(30)
-        assert cap.isVisible() == bar.isVisible() == (rows > 0)
+        # The scrollbar shows or hides on a later event-loop pass: wait for it (a fixed
+        # short wait is not enough on slow CI runners).
+        expected = rows > 0
+        qtbot_wait(lambda e=expected: cap.isVisible() == bar.isVisible() == e, 2.0)
         if not rows:
             continue
         cap_pos = cap.mapTo(table, QPoint(0, 0))
@@ -596,17 +598,15 @@ def test_tinted_svg_falls_back_to_none_on_write_error(
 @pytest.fixture
 def styled_window(
     qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[ConverterWindow]:
+) -> ConverterWindow:
     from PySide6.QtCore import QSettings
 
     ini = tmp_path / "s.ini"
     monkeypatch.setattr(
         window_module, "QSettings", lambda: QSettings(str(ini), QSettings.Format.IniFormat)
     )
-    window = ConverterWindow()
-    yield window
-    window.close()
-    window.deleteLater()
+    # Closed and deleted by the autouse cleanup in conftest.py.
+    return ConverterWindow()
 
 
 def test_tab_focus_is_visible_without_layout_shift(styled_window: ConverterWindow) -> None:
@@ -897,7 +897,9 @@ def test_footer_card_tone_and_inline_progress(
     assert pill._progress == 0.25
 
 
-def test_spinner_lifecycle_and_final_button_geometry(styled_window: ConverterWindow) -> None:
+def test_spinner_lifecycle_and_final_button_geometry(
+    styled_window: ConverterWindow, qtbot_wait: Callable[..., None]
+) -> None:
     window = styled_window
     window.show()
     window._set_run_status(StatusState.RUNNING)
@@ -905,8 +907,9 @@ def test_spinner_lifecycle_and_final_button_geometry(styled_window: ConverterWin
     pill = window.status_pill
     assert pill._spinner.isActive()
     initial_angle = pill.icon.angle
-    QTest.qWait(50)
-    assert pill.icon.angle != initial_angle
+    # The spinner turns on a timer: wait for a step (a fixed short wait is not enough on
+    # slow CI runners).
+    qtbot_wait(lambda: pill.icon.angle != initial_angle, 2.0)
     window._set_run_status(StatusState.PAUSED)
     assert not pill._spinner.isActive()
     assert not pill.icon.rotating

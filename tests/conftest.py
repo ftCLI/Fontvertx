@@ -1,10 +1,11 @@
+import gc
 import os
 import shutil
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtCore import QEvent, QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
 FONTS_DIR = Path(__file__).parent / "fixtures" / "fonts"
@@ -15,6 +16,33 @@ def _isolated_log_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Keep setup_logging (called by the CLI and the GUI entry point) away from
     # the real per-user log directory during tests.
     monkeypatch.setenv("FONTVERTX_LOG_DIR", str(tmp_path / "logs"))
+
+
+@pytest.fixture(autouse=True)
+def _destroy_qt_widgets() -> Iterator[None]:
+    """Never leave Qt widgets to Python's garbage collector.
+
+    Widgets created by a test (often without a parent, and often in reference cycles
+    through connected lambdas) would otherwise be destroyed whenever the collector
+    runs: in an arbitrary order (a model before its view, a child after its parent)
+    and possibly in a worker thread, which crashes on macOS. After each test, every
+    top-level widget is closed and deleted by Qt, parents first, in the GUI thread;
+    only then does the collector run, on the empty Python wrappers that are left.
+
+    Autouse fixtures are set up first, so this teardown runs after the test's own
+    fixtures (and their shutdown of scan threads). Tests that never create a
+    QApplication are left alone.
+    """
+    yield
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in QApplication.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    QApplication.processEvents()
+    gc.collect()
 
 
 @pytest.fixture(scope="session")

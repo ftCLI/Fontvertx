@@ -1,5 +1,3 @@
-from collections.abc import Iterator
-
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt
 from PySide6.QtGui import QTextDocument
@@ -21,19 +19,11 @@ VALUES = {
 }
 
 
-@pytest.fixture(autouse=True)
-def cleanup_dialogs(qapp: QApplication) -> Iterator[None]:
-    yield
-    for widget in QApplication.topLevelWidgets():
-        if isinstance(widget, OrganizationDialog):
-            widget.close()
-            widget.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-
-
 def test_reorder_levels_animate_highlight_follow_focus_and_close_cleanly(
-    qapp: QApplication,
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Animations follow a system setting on Windows (off on CI runners): force them.
+    monkeypatch.setattr(organization_dialog, "_animations_enabled", lambda: True)
     dialog = OrganizationDialog(
         "ttf2otf",
         (("family",), ("format",), ("outline",)),
@@ -50,10 +40,12 @@ def test_reorder_levels_animate_highlight_follow_focus_and_close_cleanly(
 
     assert dialog.levels == (("format",), ("family",), ("outline",))
     assert dialog.preview.plain_path() == "woff/Sample Family/tt/font.otf"
-    assert dialog._swap_animation is not None
-    assert dialog._swap_animation.running()
+    animation = dialog._swap_animation
+    assert animation is not None and animation.group is not None
+    assert animation.running()
     assert moved.widget.highlight_color.alpha() == 255
-    QTest.qWait(50)
+    # Halfway through the move (set directly: a fixed wait is too short on slow runners).
+    animation.group.setCurrentTime(organization_dialog.SWAP_DURATION_MS // 2)
     assert 0 < moved.widget.highlight_color.alpha() < 255
     assert 0 < moved.widget.y() < final_y
     assert dialog.focusWidget() is moved.move_down
@@ -64,8 +56,10 @@ def test_reorder_levels_animate_highlight_follow_focus_and_close_cleanly(
 
 
 def test_reorder_criteria_uses_same_move_animation_and_rapid_clicks(
-    qapp: QApplication,
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Animations follow a system setting on Windows (off on CI runners): force them.
+    monkeypatch.setattr(organization_dialog, "_animations_enabled", lambda: True)
     dialog = OrganizationDialog(
         "ttf2otf",
         (("family", "format", "outline"),),
@@ -84,8 +78,9 @@ def test_reorder_criteria_uses_same_move_animation_and_rapid_clicks(
     QTest.keyClick(move_right, Qt.Key.Key_Space)
     assert dialog.levels == (("format", "family", "outline"),)
     assert dialog.focusWidget() is move_right
-    assert dialog._swap_animation is not None
-    QTest.qWait(80)
+    animation = dialog._swap_animation
+    assert animation is not None and animation.group is not None
+    animation.group.setCurrentTime(organization_dialog.SWAP_DURATION_MS // 2)
     assert moved.parentWidget().x() > original_x
 
     for _ in range(10):

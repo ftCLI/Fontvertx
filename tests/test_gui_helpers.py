@@ -279,7 +279,6 @@ def test_app_font_loads_inter_and_applies_stylistic_set(qapp: QApplication) -> N
         default_label.ensurePolished()
         assert default_label.font().weight() == QFont.Weight.Medium
         assert QFontInfo(default_label.font()).styleName() == "Medium"
-        default_label.deleteLater()
         for weight, style in ((400, "Regular"), (500, "Medium"), (600, "SemiBold"), (700, "Bold")):
             label = QLabel("Il0")
             label.setStyleSheet(f"QLabel {{ font-size: 13pt; font-weight: {weight}; }}")
@@ -290,7 +289,6 @@ def test_app_font_loads_inter_and_applies_stylistic_set(qapp: QApplication) -> N
             default_font = QFont(label.font())
             default_font.setFeature(tag, 0)
             assert glyphs(label.font()) != glyphs(default_font)
-            label.deleteLater()
     finally:
         qapp.setFont(original_font)
 
@@ -362,8 +360,6 @@ def test_font_list_and_instance_tree_use_regular_inter(qapp: QApplication) -> No
             tree.initViewItemOption(option)
             tree.itemDelegate().initStyleOption(option, index)
             assert option.font.weight() == QFont.Weight.Normal
-        table.deleteLater()
-        tree.deleteLater()
     finally:
         qapp.setFont(original_font)
 

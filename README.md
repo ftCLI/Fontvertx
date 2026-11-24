@@ -45,7 +45,7 @@ Download the zip for your system from the [latest release](https://github.com/ft
 
 The apps are not signed, so Windows and macOS warn you on first launch. The [manual](https://github.com/ftCLI/Fontvertx/blob/v1.0.0/docs/manual.md#22-ready-to-run-app-windows-and-macos) explains how to open them.
 
-### With Python (3.11 or later)
+### With Python (3.12 or later)
 
 ```console
 uv tool install fontvertx
@@ -58,6 +58,8 @@ python -m pip install fontvertx
 ```
 
 Then run `fontvertx` for the desktop app or `fontvertx-cli` for the command line.
+
+`uv` downloads a suitable Python by itself if your system has an older one; with `pip` you need Python 3.12 or later already installed.
 
 ## Quick start
 
@@ -90,7 +92,7 @@ uv sync --group dev
 uv run pytest
 ```
 
-The project uses `ruff`, `mypy`, `bandit` and `pip-audit`; CI runs the tests on Python 3.11, 3.14 and 3.15 on Linux, Windows and macOS, with a 90% coverage threshold.
+The project uses `ruff`, `mypy`, `bandit` and `pip-audit`; CI runs the tests on Python 3.12, 3.14 and 3.15 on Linux, Windows and macOS, with a 90% coverage threshold.
 
 The ready-to-run apps are built with PyInstaller: `.\packaging\windows\build.ps1` on Windows, `./packaging/macos/build.sh` on a Mac with Apple Silicon. The official builds come from the `build.yml` workflow, which tests each build's CLI and attaches the zips to the GitHub release.
 

@@ -386,12 +386,15 @@ def test_empty_options_block_only_without_a_conversion(qapp: QApplication, app_f
     assert block.body.width() == 240
     # The whole wrapped body fits (the card has a fixed vertical policy).
     assert block.body.height() >= block.body.heightForWidth(240)
-    # Icon -> title 12px, title -> body 8px, body lines 17px apart (12px text at 1.45).
+    # Icon -> title 12px, title -> body 8px.
     assert block.title.y() - block.icon.geometry().bottom() - 1 == 12
     assert block.body.y() - block.title.geometry().bottom() - 1 == 8
-    lines = round(block.body.heightForWidth(240) / 17)
+    # Body lines about 17px apart (12px text at 1.45): the exact line height depends on
+    # each system's font metrics (17px on Windows, 18px on Linux), so allow 16-19px.
+    body_height = block.body.heightForWidth(240)
+    lines = round(body_height / 17)
     assert lines >= 2
-    assert abs(block.body.heightForWidth(240) - 17 * lines) <= 1
+    assert 16 * lines <= body_height <= 19 * lines
     for conversion in CONVERSIONS:
         panel.set_conversion(conversion)
         assert block.isHidden(), conversion

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import gc
 import json
 import shutil
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QWidget,
 )
+from shiboken6 import isValid
 
 from fontvertx.gui import conversion_controller as conversion_controller_module
 from fontvertx.gui import layout_manager, styles
@@ -164,21 +164,16 @@ def test_worker_pause_resume_cancel(qapp: QApplication) -> None:
 
 
 @pytest.fixture
-def win(
-    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[ConverterWindow]:
+def win(qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConverterWindow:
     ini = tmp_path / "settings.ini"
     monkeypatch.setattr(
         window_module,
         "QSettings",
         lambda: QSettings(str(ini), QSettings.Format.IniFormat),
     )
-    window = ConverterWindow()
-    yield window
-    window.close()
-    window.deleteLater()
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    gc.collect()
+    # Closed and deleted (its scan threads stopped first) by the autouse cleanup in
+    # conftest.py; its QSettings object already points at the temporary file.
+    return ConverterWindow()
 
 
 def test_sidebar_scrollbar_overlays_content_and_never_reserves_space(
@@ -232,7 +227,6 @@ def test_sidebar_scrollbar_overlays_content_and_never_reserves_space(
 
 
 def _scan(win: ConverterWindow, paths: list[Path], wait: Wait) -> None:
-    gc.collect()
     win._add_paths([str(p) for p in paths])
     wait(lambda: not win.file_list.scanning, 30.0)
     qapp = QApplication.instance()
@@ -670,7 +664,6 @@ def test_optional_columns_menu_persists_visibility(
         assert restarted.files.isColumnHidden(4)
     finally:
         restarted.close()
-        restarted.deleteLater()
 
 
 def test_preferences_are_persisted_between_sessions(win: ConverterWindow) -> None:
@@ -699,7 +692,6 @@ def test_preferences_are_persisted_between_sessions(win: ConverterWindow) -> Non
         assert restarted.profile_options.tolerance.value() == 2.5
     finally:
         restarted.close()
-        restarted.deleteLater()
 
 
 def test_profile_preferences_are_kept_per_profile(win: ConverterWindow) -> None:
@@ -790,7 +782,6 @@ def test_geometry_is_restored_between_sessions(win: ConverterWindow) -> None:
         assert restarted.size() == QSize(760, 640)
     finally:
         restarted.close()
-        restarted.deleteLater()
 
 
 def test_footer_tracks_selection_and_profile(
@@ -885,6 +876,53 @@ def test_modify_rights_confirmation_repeats_when_not_remembered(
     assert win._confirm_modify_rights()
     assert len(dialogs) == 2
     assert not win._settings.contains(window_module.MODIFY_RIGHTS_KEY)
+
+
+def _flush_deletions() -> None:
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.mark.parametrize(
+    "answer", [QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Cancel]
+)
+def test_modify_rights_dialog_is_deleted_once_closed(
+    win: ConverterWindow, monkeypatch: pytest.MonkeyPatch, answer: QMessageBox.StandardButton
+) -> None:
+    dialogs: list[QMessageBox] = []
+
+    def answer_dialog(dialog: QMessageBox) -> int:
+        dialogs.append(dialog)
+        return int(answer)
+
+    monkeypatch.setattr(QMessageBox, "exec", answer_dialog)
+    assert win._confirm_modify_rights() == (answer == QMessageBox.StandardButton.Yes)
+    _flush_deletions()
+    assert not isValid(dialogs[0])
+    assert win.findChildren(QMessageBox) == []
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+def test_organization_dialog_is_deleted_once_closed(
+    win: ConverterWindow, monkeypatch: pytest.MonkeyPatch, accepted: bool
+) -> None:
+    win.conversion.setCurrentIndex(win.conversion.findData("ttf2otf"))
+    win.organization_levels = ()
+    shown: list[QDialog] = []
+
+    def fake_exec(dialog: QDialog) -> QDialog.DialogCode:
+        shown.append(dialog)
+        return QDialog.DialogCode.Accepted if accepted else QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(window_module.OrganizationDialog, "exec", fake_exec)
+    # The levels the user would have chosen (read before the dialog is deleted).
+    monkeypatch.setattr(
+        window_module.OrganizationDialog, "levels", property(lambda _self: (("family",),))
+    )
+    win._show_organization_dialog()
+    assert win.organization_levels == ((("family",),) if accepted else ())
+    _flush_deletions()
+    assert not isValid(shown[0])
+    assert win.findChildren(window_module.OrganizationDialog) == []
 
 
 def test_modify_rights_confirmation_cancelled(
@@ -2390,6 +2428,9 @@ def test_organization_dialog_updates_preview_only_when_accepted(
         def exec(self) -> QDialog.DialogCode:
             return QDialog.DialogCode.Accepted if self.accepted else QDialog.DialogCode.Rejected
 
+        def deleteLater(self) -> None:  # noqa: N802 - Qt name
+            pass
+
     monkeypatch.setattr(window_module, "OrganizationDialog", FakeDialog)
     win._show_organization_dialog()
     assert win.organization_preview.plain_path() == "font.otf"
@@ -3233,7 +3274,10 @@ def test_close_event_while_paused(
     win.worker = worker  # type: ignore[assignment]
     win._run_state = RunState.PAUSED
 
+    boxes: list[QMessageBox] = []
+
     def fake_exec(box: QMessageBox) -> int:
+        boxes.append(box)
         target = next(b for b in box.buttons() if b.text() == button)
         monkeypatch.setattr(box, "clickedButton", lambda: target)
         return 0
@@ -3244,6 +3288,8 @@ def test_close_event_while_paused(
     assert not event.isAccepted()
     assert worker.resumed == (button == "Resume")
     assert worker.cancelled == (button == "Cancel conversion")
+    _flush_deletions()
+    assert not isValid(boxes[0])  # the question box does not outlive its answer
     win.worker = None
     win._cancelling = False
     win._close_when_finished = False
