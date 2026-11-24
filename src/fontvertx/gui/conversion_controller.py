@@ -9,15 +9,22 @@ in one place instead of being spread across the window.
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 
 from fontvertx.gui.logs import LogEntry
+from fontvertx.gui.profiles import CONVERSIONS
 from fontvertx.gui.status_pill import StatusState
 from fontvertx.gui.worker import ConversionWorker, RunState, exception_type
 from fontvertx.models import ConversionRequest, ConversionResult, FontOutcome, FontOutcomeKind
+
+
+def profile_name(conversion: str) -> str:
+    """Short profile name for titles: "TTF → OTF" for "TTF → OTF (TrueType → PostScript)"."""
+    return CONVERSIONS.get(conversion, conversion).split(" (", 1)[0]
 
 
 @dataclass
@@ -57,6 +64,8 @@ class ConversionController(QObject):
         self.last_run_available = False
         self.run_output_directory: Path | None = None
         self.run_input_directory: Path | None = None
+        self.current_input: Path | None = None
+        self.finished_at: datetime | None = None
         self.elapsed_timer = QTimer(self)
         self.elapsed_timer.setInterval(1000)
         self.elapsed_timer.timeout.connect(self.refresh_progress_status)
@@ -80,6 +89,9 @@ class ConversionController(QObject):
         w.progress.setValue(0)
         w._set_output_available(False)
         w.cancel_button.setEnabled(True)
+        w.log_window.set_profile(profile_name(request.conversion))
+        self.current_input = None
+        self.finished_at = None
         self.saved_files = []
         self.progress_done = 0
         self.progress_total = total
@@ -94,6 +106,7 @@ class ConversionController(QObject):
         self.worker.finished_conversion.connect(self.finished)
         self.worker.failed.connect(self.failed)
         self.worker.finished.connect(self.worker_stopped)
+        self.worker.font_started.connect(self.on_font_started)
         self.session_started_at = time.perf_counter()
         w._set_run_status(StatusState.RUNNING)
         w._update_buttons()
@@ -112,7 +125,10 @@ class ConversionController(QObject):
         )
         self.elapsed_timer.start()
         self.worker.start()
-        w.conversion_dialog.open()
+
+    def on_font_started(self, path: Path) -> None:
+        self.current_input = path
+        self.refresh_progress_status()
 
     def on_worker_event(self, event: LogEntry) -> None:
         if event.outcome is not None:
@@ -126,6 +142,7 @@ class ConversionController(QObject):
 
     def finish_timer(self) -> None:
         self.elapsed_timer.stop()
+        self.finished_at = datetime.now()
         if self.session_started_at is not None:
             self.session_elapsed = time.perf_counter() - self.session_started_at
             self.session_started_at = None

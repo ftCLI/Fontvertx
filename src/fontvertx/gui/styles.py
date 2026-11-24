@@ -235,6 +235,8 @@ RADIUS_FULL_BADGE = "12px"  # 24px step badge
 RADIUS_FULL_CHIP = "9px"
 RADIUS_FULL_BAR = "3px"  # 6px scan progress bar
 RADIUS_PILL = "22px"  # 44px Convert button
+RADIUS_ROUND = "19px"  # 38px Pause / Cancel and round icon buttons
+RADIUS_STATUS_CHIP = "12px"  # 24px outcome chip
 SCAN_LABEL_PIXEL_SIZE = 12
 # The focus ring is the element radius + 2px.
 RADIUS_SM_FOCUS = "7px"
@@ -435,20 +437,95 @@ QLabel#statusLabel[footerStatus="true"][state="error"] {
 QLabel#statusLabel[footerStatus="true"][state="running"] {
     color: $primary_tint_fg;
 }
-QLabel#statusLabel[conversionStatus="true"] {
+QLabel#runTitle {
+    color: $text;
+    font-size: $footer_status_size;
+    font-weight: 600;
+}
+QLabel#runTitle[state="warning"] {
+    color: $warn_fg;
+}
+QLabel#runCounter {
+    color: $text;
+    font-family: "$mono_family", monospace;
+    font-size: 13px;
+    font-weight: 500;
+}
+QLabel#runFile {
+    color: $text_muted;
+    font-family: "$mono_family", monospace;
+    font-size: 12px;
+}
+QWidget#resultCounts {
+    color: $text;
+    font-size: $footer_status_size;
+    font-weight: $footer_status_weight;
+}
+QFrame#statusChip {
+    background: $slate;
+    border: none;
+    border-radius: $radius_status_chip;
+}
+QFrame#statusChip[tone="success"] { background: $success_icon; }
+QFrame#statusChip[tone="error"] { background: $danger; }
+QFrame#statusChip[tone="warning"] { background: $warn_accent; }
+QFrame#statusChip[tone="running"] { background: $accent; }
+QLabel#statusChipText {
+    color: $on_primary;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+}
+QLabel#logWindowTitle {
+    color: $text_title;
+    font-size: 15px;
+    font-weight: 600;
+}
+QWidget#logWindowSummary {
+    color: $text_muted;
+    font-size: 13px;
+}
+QPushButton[runAction="true"] {
+    background: $surface;
+    border: 1px solid $border_strong;
+    border-radius: $radius_round;
+    color: $text;
+    min-height: 36px;
+    max-height: 36px;
+    padding: 0 14px;
     font-size: 13px;
     font-weight: 600;
 }
-QLabel#statusLabel[conversionStatus="true"][state="running"] { color: $primary_tint_fg; }
-QLabel#statusLabel[conversionStatus="true"][state="warning"] { color: $warn_fg; }
-QLabel#statusLabel[conversionStatus="true"][state="neutral"] { color: $slate; }
-QLabel#statusLabel[conversionStatus="true"][state="success"] { color: $success_fg; }
-QLabel#conversionFileLine {
-    font-family: "$mono_family", monospace;
-    font-size: 12px;
-    color: $text_muted;
+QPushButton[runAction="true"]:hover:enabled {
+    background: $button_hover;
 }
-QLabel#conversionFileLine[failed="true"] { color: $danger; }
+QPushButton[runAction="true"]:pressed:enabled {
+    background: $button_pressed;
+}
+QPushButton[runAction="true"]:focus {
+    border-color: $accent;
+}
+QPushButton[runAction="true"]:disabled {
+    background: $disabled_bg;
+    border-color: $border;
+    color: $text_disabled;
+}
+QPushButton[runAction="true"][runPrimary="true"] {
+    background: $primary;
+    border-color: $primary;
+    color: $on_primary;
+}
+QPushButton[runAction="true"][runPrimary="true"]:hover:enabled {
+    background: $primary_hover;
+    border-color: $primary_hover;
+}
+QPushButton[runAction="true"][runPrimary="true"]:pressed:enabled {
+    background: $accent_pressed;
+    border-color: $accent_pressed;
+}
+QPushButton[runAction="true"][runPrimary="true"]:focus {
+    border-color: $accent_pressed;
+}
 QPushButton[conversionButton="true"] {
     min-height: ${button_content}px;
     padding: 0 11px;
@@ -496,21 +573,40 @@ QWidget#resultPanel[state="warning"] QPushButton[resultAction="true"] {
 QWidget#resultPanel[state="warning"] QPushButton[resultAction="true"]:hover:enabled {
     background: $warn_bg;
 }
-QWidget#resultPanel[state="error"] QPushButton[resultAction="true"] {
-    border-color: $danger_border;
-    color: $danger;
-}
+QWidget#resultPanel[state="error"] QPushButton[resultAction="true"],
+QWidget#resultPanel[state="running"] QPushButton[resultAction="true"],
 QWidget#resultPanel[state="neutral"] QPushButton[resultAction="true"] {
     border-color: $control_border_strong;
     color: $slate;
+}
+QWidget#resultPanel[state="error"] QPushButton[resultAction="true"]:hover:enabled,
+QWidget#resultPanel[state="running"] QPushButton[resultAction="true"]:hover:enabled,
+QWidget#resultPanel[state="neutral"] QPushButton[resultAction="true"]:hover:enabled {
+    background: $button_hover;
+}
+QWidget#resultPanel QPushButton[resultAction="true"][danger="true"] {
+    border-color: $danger;
+    color: $danger;
+}
+QWidget#resultPanel QPushButton[resultAction="true"][danger="true"]:hover:enabled {
+    background: $danger_bg;
+}
+QWidget#resultPanel QPushButton[resultAction="true"][iconOnly="true"] {
+    min-width: 36px;
+    max-width: 36px;
+    min-height: 36px;
+    max-height: 36px;
+    padding: 0;
+    border-radius: $radius_round;
+}
+QWidget#resultPanel QPushButton[resultAction="true"]:disabled {
+    border-color: $border;
+    color: $text_disabled;
 }
 QWidget#resultPanel QPushButton[pillClose="true"] {
     background: transparent;
     border: none;
     padding: 0;
-}
-QWidget#resultPanel[state="error"] QPushButton[resultAction="true"]:hover:enabled {
-    background: $danger_bg;
 }
 QFrame#footerCard {
     background: $surface;
@@ -1306,9 +1402,10 @@ QProgressBar[stopped="true"]::chunk {
     background: $control_border_strong;
 }
 QProgressBar#conversionProgress {
-    min-height: 8px;
-    max-height: 8px;
+    min-height: 6px;
+    max-height: 6px;
     background: transparent;
+    border: none;
 }
 QToolTip {
     background: $tooltip_bg;
@@ -1375,6 +1472,8 @@ def build_stylesheet(palette: Palette) -> str:
         radius_full_chip=RADIUS_FULL_CHIP,
         radius_full_bar=RADIUS_FULL_BAR,
         radius_pill=RADIUS_PILL,
+        radius_round=RADIUS_ROUND,
+        radius_status_chip=RADIUS_STATUS_CHIP,
         item_padding_left=f"{ITEM_PADDING_LEFT}px",
         header_text_inset=f"{ITEM_PADDING_LEFT + ITEM_TEXT_MARGIN}px",
         radius_footer=RADIUS_FOOTER,

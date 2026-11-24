@@ -1,6 +1,6 @@
 [project]
 name = "fontvertx"
-version = "1.0.0"
+version = "1.1.0"
 description = "A free, open-source font converter for the desktop and the command line."
 readme = "README.md"
 license = "MIT"

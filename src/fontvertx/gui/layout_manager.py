@@ -147,6 +147,8 @@ class LayoutManager:
             + 2 * FIELD_BORDER
         )
         button.setFixedWidth(width)
+        # Pause / Cancel take Convert's place with the same width.
+        self.w.primary_slot.setFixedWidth(width)
 
     def update_input(self, width: int) -> None:
         w = self.w

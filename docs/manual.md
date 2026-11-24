@@ -1,6 +1,6 @@
 # Fontvertx — User Manual
 
-Version 1.0.0 · November 2026
+Version 1.1.0 · November 2026
 
 ## Contents
 
@@ -149,7 +149,7 @@ The window is made of four numbered cards and a fixed footer.
 | **3** | **Set options** | Adjust the options of the selected profile |
 | **4** | **Choose Output** | Choose where files are saved and how they are organized |
 
-The **footer** shows the current status (messages, warnings, outcome of the last conversion), the selection summary, the **View last run** button and the main **Convert** button.
+The **footer** is where conversions run. Before a run it shows the selection summary and the main **Convert** button. During a run it shows the progress and the **Pause** and **Cancel** buttons in place of Convert; afterwards, the outcome with **View log**, **Open output folder** and **Convert** for another run (see §8). It also shows short messages and warnings.
 
 **Adaptive layout.** On wide windows the font list stays beside the conversion and output cards, which scroll independently when needed. On narrow windows the sections stack vertically.
 
@@ -222,7 +222,7 @@ Options are stored per profile: each profile remembers its own values across ses
 1. Check the summary in the footer: profile, number of selected fonts, destination.
 2. Press **Convert** (the label shows how many fonts will be converted) or **Ctrl+Enter**.
 3. Fontvertx asks you to confirm that you have the legal right to modify the selected fonts (*Confirm font modification rights*). **I have permission** continues; checking **Remember this choice** skips the confirmation on future runs. Without it, you will be asked again next time.
-4. The **Conversion** window opens and shows progress (see §8).
+4. The conversion runs in the footer, which shows the progress, the file being converted and the **Pause** and **Cancel** buttons (see §8). The cards stay visible but cannot be changed until the run ends.
 
 ---
 
@@ -375,35 +375,39 @@ When folder levels are configured, the example also appears below the controls o
 
 ## 8. During and after a conversion
 
-### 8.1 The Conversion window
+### 8.1 Progress in the footer
 
-While a run is in progress, a window shows the status, a progress bar and the file being processed. Available controls:
+While a run is in progress, the footer shows **Converting…**, the count of processed fonts (for example `37 / 146`), the path of the font being converted and a progress bar. **Pause** and **Cancel** take the place of Convert, and the keyboard focus moves to **Pause**. **Ctrl+Enter** does nothing until the run ends.
 
 | Button | Effect |
 |---|---|
-| **Pause** / **Resume** | Pauses after the font being converted; Resume continues with the next one. |
+| **Pause** / **Resume** | Pauses after the font being converted; Resume continues with the next one. While paused, the footer shows **Paused** and Resume is the highlighted button. |
 | **Cancel** | Stops the conversion. Files already converted are kept. |
-| **Show logs** / **Hide logs** | Shows or hides the detailed run log. |
-| **Save logs** | Exports the log as JSON Lines (`.jsonl`). |
-| **Open output folder** | Opens the output folder. |
-| **Close** | Closes the window (not available while a run is in progress). |
+| **View log** (eye icon) | Opens the log window (§8.3), which updates live during the run. |
+
+During the run the cards are dimmed and cannot be changed, and fonts cannot be dropped onto the window; you can still scroll the font list to look through it. Everything becomes available again when the run ends.
 
 The reported total time excludes pauses.
 
 ### 8.2 Outcome
 
-When the run ends, the status shows one of these outcomes:
+When the run ends, the footer shows a colored chip with the outcome, the counts and the total time:
 
-- **Done** — *n* converted
-- **Done with errors** — *n* converted · *m* failed
-- **Cancelled** — *n* of *total* converted
-- **Error** — conversion stopped · *n* converted
+- **Done** (green) — *n* converted · *time*
+- ***m* failed** (red) — *n* converted · *time*: some fonts could not be converted
+- ***k* skipped** (amber) — *n* converted · *time*
+- **Cancelled** — *n* of *total* converted · *time*
+- **Error** (red) — conversion stopped · *n* converted · *time*
 
-The outcome also stays visible in the main window's footer.
+On the right: **View log** (highlighted in red when some fonts failed), **Open output folder** and **Convert**, ready for another run. In a narrow window, View log and Open output folder are shown as round icon buttons; hover over them for their names.
 
-### 8.3 View last run
+### 8.3 The log window
 
-After closing the Conversion window, the **View last run** button in the footer reopens it with the progress and logs of the last run, so you can export the logs or open the output folder.
+**View log** opens the log of the last run in a separate window. It does not block the main window: you can keep it open while you use the app, and it updates live during a run. Pressing View log again brings the open window to the front.
+
+The window shows the title *Last run · profile* (for example *Last run · TTF → OTF*), the outcome chip, a summary line (counts, duration and finish time) and the full log. **Save logs…** exports the log as JSON Lines (`.jsonl`); **Close** closes the window. Closing it never stops or changes a conversion.
+
+When the footer shows the selection summary again (for example after you change profile), the **View log** link next to it reopens the log of the last run.
 
 ### 8.4 Closing the app during a conversion
 
@@ -528,7 +532,7 @@ Both the GUI and the CLI write a full diagnostic log (down to DEBUG) to a rotati
 
 Set the `FONTVERTX_LOG_DIR` environment variable to use a different folder. The ready-to-run apps use the same folders.
 
-In the GUI, the log of a single run can also be exported as JSON Lines with **Save logs** (§8.1).
+In the GUI, the log of a single run can also be exported as JSON Lines with **Save logs…** in the log window (§8.3).
 
 ---
 
@@ -553,7 +557,7 @@ To restore a profile's options to the factory defaults, use **Reset** in card 3;
 
 | Keys | Action |
 |---|---|
-| **Ctrl+Enter** | Start the conversion |
+| **Ctrl+Enter** | Start the conversion (does nothing while a run is in progress) |
 | **Ins** | Add a custom instance (instance tree) |
 | **Delete** | Remove the selected custom instance |
 | **Shift+F10** | Context menu of the selected instance |

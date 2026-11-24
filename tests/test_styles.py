@@ -769,59 +769,256 @@ def test_completed_step_badge_paints_a_centered_vector_check(
     assert badge.text() == "1" and not badge.is_done()
 
 
+def _near(color: QColor, expected: str, tolerance: int = 16) -> bool:
+    """Same color up to the antialiasing of a 1px rounded border."""
+    target = QColor(expected)
+    return all(
+        abs(a - b) <= tolerance
+        for a, b in zip(color.getRgb()[:3], target.getRgb()[:3], strict=True)
+    )
+
+
 @pytest.mark.parametrize(
-    ("state", "tone"),
+    ("state", "tone", "chip"),
     [
-        (StatusState.DONE, "success"),
-        (StatusState.WARNING, "warning"),
-        (StatusState.FAILED, "error"),
+        (StatusState.DONE, "success", "Done"),
+        (StatusState.WARNING, "warning", "0 skipped"),
+        (StatusState.FAILED, "error", "0 failed"),
+        (StatusState.CANCELLED, "neutral", "Cancelled"),
+        (StatusState.FATAL, "error", "Error"),
     ],
 )
-def test_footer_status_uses_state_pill_and_icon(
-    styled_window: ConverterWindow, state: StatusState, tone: str
+def test_footer_result_shows_chip_and_counts(
+    styled_window: ConverterWindow, state: StatusState, tone: str, chip: str
 ) -> None:
+    pill = styled_window.status_pill
     styled_window._set_run_status(state)
-    assert styled_window.status_pill.label.text()
-    assert styled_window.status_pill.icon.pixmap() is not None
-    assert styled_window.status_pill.label.property("state") == tone
-    assert styled_window.status_pill.label.property("footerStatus") is True
-    assert not styled_window.status_pill.label.isHidden()
+    assert pill.chip.text() == chip
+    assert pill.chip.property("tone") == tone
+    assert pill.chip.icon.pixmap() is not None
+    assert "converted" in pill.counts.text()
+    assert not pill.chip.isHidden() and not pill.counts.isHidden()
+    assert pill.label.isHidden() and pill.run_view.isHidden()
+    assert pill.property("state") == tone
 
 
-def test_result_actions_share_compact_state_panel(styled_window: ConverterWindow) -> None:
+def test_result_actions_share_compact_state_panel(
+    app_font: None, styled_window: ConverterWindow
+) -> None:
     window = styled_window
     window.resize(1200, 600)
     window.show()
-    window.last_run_button.show()
-    window.open_output_button.show()
     window._set_run_status(StatusState.DONE)
+    window.view_log_button.setEnabled(True)
+    window.open_output_button.setEnabled(True)
     QApplication.processEvents()
 
-    assert window.status_pill.height() == styles.FOOTER_HEIGHT
-    assert window.status_pill.pill_layout.indexOf(window.status_pill.label) >= 0
-    assert window.status_pill.pill_layout.indexOf(window.status_pill.result_buttons) >= 0
-    assert window.status_pill.label.text().startswith("Done")
-    assert window.status_pill.label.property("state") == "success"
-    assert window.status_pill.property("state") == "success"
-    assert window.status_pill.result_buttons_layout.direction().name == "LeftToRight"
-    assert window.status_pill.pill_layout.indexOf(window.status_pill.close_button) >= 0
+    pill = window.status_pill
+    assert pill.height() == styles.FOOTER_HEIGHT
+    assert pill.pill_layout.indexOf(pill.chip) >= 0
+    assert pill.pill_layout.indexOf(pill.result_buttons) >= 0
+    assert pill.chip.text() == "Done"
+    assert pill.property("state") == "success"
+    assert pill.result_buttons_layout.direction().name == "LeftToRight"
+    # No dismiss button on a result: Convert is ready for another run.
+    assert pill.close_button.isHidden()
     # The footer card carries the tone; the status content paints nothing itself.
     assert window.footer_card.property("tone") == "success"
     card_image = window.footer_card.grab().toImage()
     assert card_image.pixelColor(10, card_image.height() // 2).name() == LIGHT.success_bg
     assert card_image.pixelColor(card_image.width() // 2, 0).name() == LIGHT.success_border
-    button_image = window.last_run_button.grab().toImage()
-    assert (
-        button_image.pixelColor(0, window.last_run_button.height() // 2).name()
-        == LIGHT.success_btn_border
+    button_image = window.view_log_button.grab().toImage()
+    assert _near(
+        button_image.pixelColor(0, window.view_log_button.height() // 2), LIGHT.success_btn_border
     )
-    assert window.last_run_button.height() == 32
-    assert window.status_pill.close_button.size() == QSize(28, 28)
-    # Done glyph: green check on a 22px white circle.
-    icon = window.status_pill.icon
-    assert icon.size() == QSize(22, 22)
-    icon_image = icon.grab().toImage()
+    assert not pill.compact
+    assert window.view_log_button.height() == 32
+    assert window.view_log_button.text() == "View log"
+    assert not window.view_log_button.icon().isNull()
+    assert not window.open_output_button.icon().isNull()
+    # Green chip, white text.
+    chip = pill.chip.grab().toImage()
+    assert chip.pixelColor(chip.width() // 2, 2).name() == LIGHT.success_icon
+    assert (
+        pill.chip.label.palette().color(pill.chip.label.foregroundRole()).name() == LIGHT.on_primary
+    )
+
+
+def test_notice_keeps_glyph_and_dismiss(styled_window: ConverterWindow) -> None:
+    window = styled_window
+    window.show()
+    window._set_status("Could not open the output folder.", "error")
+    QApplication.processEvents()
+    pill = window.status_pill
+    assert pill.close_button.size() == QSize(28, 28)
+    assert not pill.close_button.isHidden()
+    assert pill.label.property("state") == "error"
+    assert pill.label.property("footerStatus") is True
+    # Error glyph: on a 22px white circle.
+    assert pill.icon.size() == QSize(22, 22)
+    icon_image = pill.icon.grab().toImage()
     assert icon_image.pixelColor(2, 11).name() == LIGHT.surface
+    assert pill.chip.isHidden() and pill.result_buttons.isHidden()
+
+
+@pytest.mark.parametrize(
+    ("state", "background", "border", "track", "fill", "title"),
+    [
+        (
+            StatusState.RUNNING,
+            LIGHT.accent_tint,
+            LIGHT.running_track,
+            LIGHT.running_track,
+            LIGHT.accent,
+            "Converting…",
+        ),
+        (
+            StatusState.PAUSED,
+            LIGHT.warn_bg,
+            LIGHT.warn_border,
+            LIGHT.border_strong,
+            LIGHT.control_border_strong,
+            "Paused",
+        ),
+    ],
+)
+def test_footer_card_tone_and_progress_bar(
+    styled_window: ConverterWindow,
+    state: StatusState,
+    background: str,
+    border: str,
+    track: str,
+    fill: str,
+    title: str,
+) -> None:
+    window = styled_window
+    window.resize(1200, 600)
+    window.show()
+    window.converter.outcome.total = 4
+    window.converter.progress_done = 1
+    window.progress.setRange(0, 4)
+    window.progress.setValue(1)
+    window._set_run_status(state)
+    QApplication.processEvents()
+    pill = window.status_pill
+    card = window.footer_card.grab().toImage()
+    assert card.pixelColor(10, card.height() // 2).name() == background
+    assert card.pixelColor(card.width() // 2, 0).name() == border
+    assert pill.run_title.text() == title
+    assert pill.run_counter.text() == "1 / 4"
+    # Thin 6px bar under the text line, spanning the status area, 25% filled.
+    bar = pill.progress
+    assert bar.isVisible() and bar.height() == 6
+    assert bar.width() > pill.run_title.width()
+    assert bar.accessibleName() == "Conversion progress"
+    assert bar.value() == 1 and bar.maximum() == 4
+    image = bar.grab().toImage()
+    assert image.pixelColor(bar.width() // 8, 3).name() == fill
+    assert image.pixelColor(bar.width() * 3 // 4, 3).name() == track
+
+
+def test_run_title_tones_and_paused_hint(styled_window: ConverterWindow) -> None:
+    window = styled_window
+    window.show()
+    pill = window.status_pill
+    window.converter.current_input = Path("fonts") / "a.ttf"
+    window._set_run_status(StatusState.RUNNING)
+    assert pill.run_file.text() == str(Path("fonts") / "a.ttf")
+    assert pill.run_file.elide_mode is Qt.TextElideMode.ElideMiddle
+    assert pill.run_title.property("state") == "running"
+    window._set_run_status(StatusState.PAUSED)
+    assert pill.run_file.text() == "The next font starts when you resume."
+    assert pill.run_title.property("state") == "warning"
+    assert pill.run_title.palette().color(pill.run_title.foregroundRole()).name() == LIGHT.warn_fg
+    assert pill.accessibleDescription().startswith("Paused")
+
+
+@pytest.mark.parametrize(
+    ("state", "log_border", "log_text", "output_border", "output_text"),
+    [
+        (
+            StatusState.DONE,
+            LIGHT.success_btn_border,
+            LIGHT.success_icon,
+            LIGHT.success_btn_border,
+            LIGHT.success_icon,
+        ),
+        (
+            StatusState.CANCELLED,
+            LIGHT.control_border_strong,
+            LIGHT.slate,
+            LIGHT.control_border_strong,
+            LIGHT.slate,
+        ),
+        (StatusState.WARNING, LIGHT.warn_border, LIGHT.warn_fg, LIGHT.warn_border, LIGHT.warn_fg),
+        # With errors View log stands out in red; Open output folder stays neutral.
+        (
+            StatusState.ERRORS,
+            LIGHT.danger,
+            LIGHT.danger,
+            LIGHT.control_border_strong,
+            LIGHT.slate,
+        ),
+        (
+            StatusState.FAILED,
+            LIGHT.danger,
+            LIGHT.danger,
+            LIGHT.control_border_strong,
+            LIGHT.slate,
+        ),
+        (StatusState.FATAL, LIGHT.danger, LIGHT.danger, LIGHT.control_border_strong, LIGHT.slate),
+    ],
+)
+def test_result_buttons_follow_pill_tone(
+    app_font: None,
+    styled_window: ConverterWindow,
+    state: StatusState,
+    log_border: str,
+    log_text: str,
+    output_border: str,
+    output_text: str,
+) -> None:
+    window = styled_window
+    window.resize(1200, 600)
+    window.show()
+    window._set_run_status(state)
+    window.view_log_button.setEnabled(True)
+    window.open_output_button.setEnabled(True)
+    QApplication.processEvents()
+    assert not window.status_pill.compact  # labelled buttons at this width
+    for button, border, text in (
+        (window.view_log_button, log_border, log_text),
+        (window.open_output_button, output_border, output_text),
+    ):
+        image = button.grab().toImage()
+        assert _near(image.pixelColor(0, button.height() // 2), border)
+        assert button.palette().color(button.foregroundRole()).name() == text
+
+
+def test_pause_cancel_and_resume_styles(styled_window: ConverterWindow) -> None:
+    window = styled_window
+    window.show()
+    window.worker = object()  # type: ignore[assignment]
+    window._run_state = window_module.RunState.RUNNING
+    window._set_run_status(StatusState.RUNNING)
+    window._update_buttons()
+    QApplication.processEvents()
+    pause, cancel = window.pause_button, window.cancel_button
+    assert pause.text() == "Pause" and cancel.text() == "Cancel"
+    assert not pause.icon().isNull() and not cancel.icon().isNull()
+    assert pause.height() == cancel.height() == 38
+    assert pause.palette().color(pause.backgroundRole()).name() == LIGHT.surface
+    window._run_state = window_module.RunState.PAUSED
+    window._set_run_status(StatusState.PAUSED)
+    window._update_buttons()
+    QApplication.processEvents()
+    assert pause.text() == "Resume"
+    assert pause.property("runPrimary") is True
+    image = pause.grab().toImage()
+    assert image.pixelColor(pause.width() // 2, 4).name() == LIGHT.primary
+    assert pause.palette().color(pause.foregroundRole()).name() == LIGHT.on_primary
+    assert cancel.property("runPrimary") is False
+    window.worker = None
 
 
 def test_footer_convert_disabled_palette_and_size(
@@ -844,137 +1041,6 @@ def test_footer_convert_disabled_palette_and_size(
         == LIGHT.convert_disabled_text
     )
     assert not window.history_button.icon().isNull()
-
-
-@pytest.mark.parametrize(
-    ("state", "background", "border", "track", "fill"),
-    [
-        (
-            StatusState.RUNNING,
-            LIGHT.accent_tint,
-            LIGHT.running_track,
-            LIGHT.running_track,
-            LIGHT.accent,
-        ),
-        (
-            StatusState.PAUSED,
-            LIGHT.warn_bg,
-            LIGHT.warn_border,
-            LIGHT.warn_fill,
-            LIGHT.warn_accent,
-        ),
-    ],
-)
-def test_footer_card_tone_and_inline_progress(
-    styled_window: ConverterWindow,
-    state: StatusState,
-    background: str,
-    border: str,
-    track: str,
-    fill: str,
-) -> None:
-    window = styled_window
-    window.resize(1200, 600)
-    window.show()
-    window.converter.outcome.total = 4
-    window.converter.outcome.converted = 1
-    window.converter.progress_done = 2
-    window._set_run_status(state)
-    QApplication.processEvents()
-    pill = window.status_pill
-    card = window.footer_card.grab().toImage()
-    assert card.pixelColor(10, card.height() // 2).name() == background
-    assert card.pixelColor(card.width() // 2, 0).name() == border
-    # Inline 180 x 4 bar right after the text, 25% filled.
-    bar = pill.progress
-    assert bar.isVisible() and bar.size() == QSize(180, 4)
-    label_right = pill.label.geometry().right()
-    assert bar.geometry().left() - label_right - 1 == pill.pill_layout.spacing()
-    image = bar.grab().toImage()
-    assert image.pixelColor(20, 2).name() == fill
-    assert image.pixelColor(135, 2).name() == track
-    assert pill.label.text().endswith("2 of 4 · 0:00")
-    assert pill._progress == 0.25
-
-
-def test_spinner_lifecycle_and_final_button_geometry(
-    styled_window: ConverterWindow, qtbot_wait: Callable[..., None]
-) -> None:
-    window = styled_window
-    window.show()
-    window._set_run_status(StatusState.RUNNING)
-    QApplication.processEvents()
-    pill = window.status_pill
-    assert pill._spinner.isActive()
-    initial_angle = pill.icon.angle
-    # The spinner turns on a timer: wait for a step (a fixed short wait is not enough on
-    # slow CI runners).
-    qtbot_wait(lambda: pill.icon.angle != initial_angle, 2.0)
-    window._set_run_status(StatusState.PAUSED)
-    assert not pill._spinner.isActive()
-    assert not pill.icon.rotating
-    window._set_run_status(StatusState.RUNNING)
-    assert pill._spinner.isActive()
-    window._show_summary()
-    assert not pill._spinner.isActive()
-    window._set_run_status(StatusState.DONE)
-    QApplication.processEvents()
-    assert not pill._spinner.isActive()
-    assert pill.last_run_button.height() == pill.output_button.height() == 32
-    assert pill.close_button.size() == QSize(28, 28)
-    assert pill.label.accessibleDescription() == ""  # Description belongs to the pill.
-    assert pill.accessibleDescription() == pill.label.text()
-
-
-@pytest.mark.parametrize(
-    ("state", "border", "text"),
-    [
-        (StatusState.DONE, LIGHT.success_btn_border, LIGHT.success_icon),
-        (StatusState.CANCELLED, LIGHT.control_border_strong, LIGHT.slate),
-        (StatusState.WARNING, LIGHT.warn_border, LIGHT.warn_fg),
-        (StatusState.ERRORS, LIGHT.danger_border, LIGHT.danger),
-        (StatusState.FAILED, LIGHT.danger_border, LIGHT.danger),
-        (StatusState.FATAL, LIGHT.danger_border, LIGHT.danger),
-    ],
-)
-def test_result_buttons_follow_pill_tone(
-    styled_window: ConverterWindow, state: StatusState, border: str, text: str
-) -> None:
-    window = styled_window
-    window.show()
-    window.last_run_button.setEnabled(True)
-    window.open_output_button.setEnabled(True)
-    window._set_run_status(state)
-    QApplication.processEvents()
-    for button in (window.last_run_button, window.open_output_button):
-        image = button.grab().toImage()
-        assert image.pixelColor(0, button.height() // 2).name() == border
-        assert button.palette().color(button.foregroundRole()).name() == text
-
-
-@pytest.mark.parametrize(
-    "state",
-    [
-        StatusState.CANCELLED,
-        StatusState.DONE,
-        StatusState.WARNING,
-        StatusState.ERRORS,
-        StatusState.FAILED,
-        StatusState.FATAL,
-    ],
-)
-def test_final_actions_are_hidden_until_dialog_is_closed(
-    styled_window: ConverterWindow, state: StatusState
-) -> None:
-    window = styled_window
-    window.show()
-    window.conversion_dialog.open()
-    window._set_run_status(state)
-    assert window.status_pill.result_buttons.isHidden()
-    assert window.status_pill.close_button.isHidden()
-    window.conversion_dialog.accept()
-    assert not window.status_pill.result_buttons.isHidden()
-    assert not window.status_pill.close_button.isHidden()
 
 
 def test_radius_scale_replaces_single_radius() -> None:
