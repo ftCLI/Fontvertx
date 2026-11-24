@@ -17,11 +17,10 @@ from fontvertx.gui.styles import LIGHT, mono_family, stylesheet
 
 @pytest.fixture
 def dialog(qapp: QApplication) -> Iterator[ConversionDialog]:
+    # The parent is a top-level widget: the autouse cleanup in conftest.py deletes
+    # it, and the dialog with it.
     parent = QWidget()
-    dlg = ConversionDialog(parent)
-    yield dlg
-    dlg.deleteLater()
-    parent.deleteLater()
+    yield ConversionDialog(parent)
 
 
 def test_initial_state_is_idle(dialog: ConversionDialog) -> None:

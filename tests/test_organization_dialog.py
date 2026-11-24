@@ -1,5 +1,3 @@
-from collections.abc import Iterator
-
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt
 from PySide6.QtGui import QTextDocument
@@ -19,16 +17,6 @@ VALUES = {
     "tolerance": "1.5",
     "simplify": "2",
 }
-
-
-@pytest.fixture(autouse=True)
-def cleanup_dialogs(qapp: QApplication) -> Iterator[None]:
-    yield
-    for widget in QApplication.topLevelWidgets():
-        if isinstance(widget, OrganizationDialog):
-            widget.close()
-            widget.deleteLater()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_reorder_levels_animate_highlight_follow_focus_and_close_cleanly(

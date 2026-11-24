@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -596,17 +595,15 @@ def test_tinted_svg_falls_back_to_none_on_write_error(
 @pytest.fixture
 def styled_window(
     qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[ConverterWindow]:
+) -> ConverterWindow:
     from PySide6.QtCore import QSettings
 
     ini = tmp_path / "s.ini"
     monkeypatch.setattr(
         window_module, "QSettings", lambda: QSettings(str(ini), QSettings.Format.IniFormat)
     )
-    window = ConverterWindow()
-    yield window
-    window.close()
-    window.deleteLater()
+    # Closed and deleted by the autouse cleanup in conftest.py.
+    return ConverterWindow()
 
 
 def test_tab_focus_is_visible_without_layout_shift(styled_window: ConverterWindow) -> None:

@@ -991,9 +991,14 @@ class InstanceTree(QTreeWidget):
             self.window(),
             editing.data(0, _SPEC_ROLE).coordinates if editing is not None else None,
         )
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        spec = InstanceSpec(dialog.coordinates())
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            spec = InstanceSpec(dialog.coordinates())
+        finally:
+            # A child of the window: without this, every closed dialog stays alive
+            # (hidden) until the window is destroyed.
+            dialog.deleteLater()
         existing = next(
             (
                 c

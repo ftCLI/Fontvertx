@@ -1,4 +1,3 @@
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +14,10 @@ from PySide6.QtWidgets import (
     QStyleOptionViewItem,
     QToolTip,
     QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
+from shiboken6 import isValid
 
 from fontvertx.gui import instance_tree as tree_module
 from fontvertx.gui.instance_tree import CustomInstanceDialog, InstanceTree, location_text
@@ -43,16 +45,14 @@ def variable_info(path: Path = FONT_PATH, outlines: str = "TrueType") -> FontInf
 
 
 @pytest.fixture
-def tree(qapp: QApplication) -> Iterator[InstanceTree]:
+def tree(qapp: QApplication) -> InstanceTree:
     widget = InstanceTree()
     widget.resize(600, 300)
     widget.setSortingEnabled(False)
     widget.add_font(FONT_PATH, "Var", variable_info())
-    yield widget
-    # Shown trees left open slow down later timing-sensitive tests (animations).
-    widget.close()
-    widget.deleteLater()
-    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    # Closed and deleted by the autouse cleanup in conftest.py (shown trees left open
+    # would slow down later timing-sensitive tests).
+    return widget
 
 
 def child_names(tree: InstanceTree) -> list[str]:
@@ -413,6 +413,24 @@ def test_add_custom_instance_selects_and_remembers_it(
     tree.clear_fonts()
     tree.add_font(FONT_PATH, "Var", variable_info())
     assert child_names(tree) == ["Regular", "Bold", "Custom instance"]
+
+
+@pytest.mark.parametrize("accepted", [True, False])
+def test_custom_instance_dialog_is_deleted_once_closed(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, accepted: bool
+) -> None:
+    window = QWidget()  # the dialog's parent, as the main window in the app
+    window.setLayout(QVBoxLayout())
+    window.layout().addWidget(tree)
+    shown = stub_dialog(monkeypatch, accepted=accepted)
+    tree.setCurrentItem(tree.topLevelItem(0))
+    tree.add_custom()
+    assert shown[0].parent() is window
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert not isValid(shown[0])
+    assert window.findChildren(CustomInstanceDialog) == []
+    expected = ["Regular", "Bold", "Custom instance"] if accepted else ["Regular", "Bold"]
+    assert child_names(tree) == expected
 
 
 def test_add_custom_instance_cancelled_or_without_axes(
@@ -1031,31 +1049,65 @@ def test_preview_keeps_the_full_file_name(qapp: QApplication) -> None:
     assert tree_module._wrappable("a-b_c.ttf") == "a-​b_​c​.ttf"
 
 
-@pytest.mark.parametrize(
-    ("path", "grows"),
-    [
-        # One line of text when shown, two after the edit: fits the two reserved lines.
-        (Path("FFFFF-Var.ttf"), False),
-        # Two lines when shown, three after the edit: the dialog has to grow.
-        (Path("-".join(["Abcd"] * 9) + ".ttf"), True),
-    ],
-)
-def test_preview_gaining_a_line_after_show_grows_the_dialog(
-    qapp: QApplication, app_font: None, path: Path, grows: bool
-) -> None:
+def _preview_lines(dialog: CustomInstanceDialog) -> int:
+    """Lines the file-name preview needs at its current width (measured, never assumed:
+    where the name wraps depends on each system's text metrics)."""
+    label = dialog.filename_preview
+    return round(label.heightForWidth(label.width()) / label.fontMetrics().lineSpacing())
+
+
+def _edit_axes_and_measure(path: Path) -> tuple[CustomInstanceDialog, int, int, int, list[int]]:
+    """Show the dialog, then edit the axis values (a longer file name).
+
+    Returns the dialog, its height when shown, the preview lines before and after the
+    edit, and the axis row heights when shown.
+    """
     dialog = _shown_dialog(path)
+    rows = _axis_row_heights(dialog)
+    height = dialog.height()
+    lines_before = _preview_lines(dialog)
+    dialog._boxes["wght"].setValue(123.45)
+    dialog._boxes["wdth"].setValue(87.25)
+    QTest.qWait(30)
+    return dialog, height, lines_before, _preview_lines(dialog), rows
+
+
+@pytest.mark.parametrize(
+    "path",
+    [Path("FFFFF-Var.ttf"), Path("-".join(["Abcd"] * 9) + ".ttf")],
+)
+def test_preview_line_change_after_show_grows_the_dialog_only_when_needed(
+    qapp: QApplication, app_font: None, path: Path
+) -> None:
+    dialog, height, lines_before, lines_after, rows = _edit_axes_and_measure(path)
     try:
-        label = dialog.filename_preview
-        rows = _axis_row_heights(dialog)
-        height = dialog.height()
-        lines_before = label.heightForWidth(label.width())
-        dialog._boxes["wght"].setValue(123.45)
-        dialog._boxes["wdth"].setValue(87.25)
-        QTest.qWait(30)
-        lines_after = label.heightForWidth(label.width())
-        assert lines_after > lines_before if grows else lines_after == lines_before
+        # The preview always has room for PREVIEW_MIN_LINES lines: the dialog grows only
+        # when the edited name needs more lines than it already had room for.
+        room = max(lines_before, tree_module.PREVIEW_MIN_LINES)
+        if lines_after > room:
+            assert dialog.height() > height
+        else:
+            assert dialog.height() == height
         _assert_preview_fits(dialog)
         assert _axis_row_heights(dialog) == rows
-        assert dialog.height() > height if grows else dialog.height() == height
     finally:
         dialog.close()
+
+
+def test_preview_gaining_a_line_after_show_grows_the_dialog(
+    qapp: QApplication, app_font: None
+) -> None:
+    # Find, with this system's text metrics, a name whose preview gains a line beyond
+    # the reserved room after the edit, so the "grows" case is covered everywhere.
+    for segments in range(6, 40):
+        path = Path("-".join(["Abcd"] * segments) + ".ttf")
+        dialog, height, lines_before, lines_after, rows = _edit_axes_and_measure(path)
+        try:
+            if lines_after > max(lines_before, tree_module.PREVIEW_MIN_LINES):
+                assert dialog.height() > height
+                _assert_preview_fits(dialog)
+                assert _axis_row_heights(dialog) == rows
+                return
+        finally:
+            dialog.close()
+    pytest.fail("No file name gained a preview line after the edit")
