@@ -54,6 +54,22 @@ for tool in cffsubr/tx ttfautohint/ttfautohint; do
 done
 codesign --verify --deep --strict "$app"
 
+# The app must be a regular app: the GUI is the bundle's executable, and nothing marks it
+# as background-only or agent-only (that would hide it from the Dock and Cmd+Tab).
+plist="$app/Contents/Info.plist"
+executable="$(plutil -extract CFBundleExecutable raw -o - "$plist")"
+if [[ "$executable" != "Fontvertx" ]]; then
+    echo "Info.plist: CFBundleExecutable is '$executable', expected 'Fontvertx'" >&2
+    exit 1
+fi
+for key in LSBackgroundOnly LSUIElement; do
+    # plutil fails when the key is missing: that means "not set", which is fine.
+    if value="$(plutil -extract "$key" raw -o - "$plist" 2>/dev/null)" && [[ "$value" == "true" ]]; then
+        echo "Info.plist: $key is true, which hides the app from the Dock and Cmd+Tab" >&2
+        exit 1
+    fi
+done
+
 # 3. LICENSE and README next to the app (not inside the bundle).
 cp LICENSE README.md "$dist/"
 
