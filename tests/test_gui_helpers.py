@@ -132,7 +132,7 @@ def test_scan_worker_emits_failed_on_unexpected_error(
 def test_material_icon_renders_tinted_pixmaps(qapp: QApplication) -> None:
     from fontvertx.gui.icons import SvgIconEngine, material_icon
 
-    icon = material_icon("history", "#123456", 18, disabled_color="#abcdef")
+    icon = material_icon("visibility", "#123456", 18, disabled_color="#abcdef")
     assert not icon.isNull()
     # Rendered from the SVG at the requested device pixel ratio, not scaled from 1x / 2x.
     for ratio in (1.0, 1.5, 2.0):
@@ -153,7 +153,7 @@ def test_material_icon_renders_tinted_pixmaps(qapp: QApplication) -> None:
     disabled = icon.pixmap(QSize(18, 18), 2.0, QIcon.Mode.Disabled).toImage()
     assert opaque_colors(disabled) == {"#abcdef"}
     # Without a disabled color the glyph is faded, not recolored.
-    plain = material_icon("history", "#123456")
+    plain = material_icon("visibility", "#123456")
     faded = plain.pixmap(QSize(18, 18), 1.0, QIcon.Mode.Disabled).toImage()
     assert max(faded.pixelColor(x, y).alpha() for x in range(18) for y in range(18)) < 255
     # paint() honors the target device's ratio; pixmaps are cached.
@@ -168,7 +168,7 @@ def test_material_icon_renders_tinted_pixmaps(qapp: QApplication) -> None:
     assert icon.actualSize(QSize(24, 24)) == QSize(24, 24)
     assert not QIcon(icon).isNull()
 
-    engine = SvgIconEngine("history", "#123456", None)
+    engine = SvgIconEngine("visibility", "#123456", None)
     normal, off = QIcon.Mode.Normal, QIcon.State.Off
     assert engine.pixmap(QSize(18, 18), normal, off).devicePixelRatio() == 1.0
     assert engine.actualSize(QSize(20, 20), normal, off) == QSize(20, 20)
@@ -409,7 +409,8 @@ def test_monospaced_font_is_applied_to_paths_log_counters_badges_and_chips() -> 
         "QLabel#filenamePreview",
         "QLineEdit#destinationEdit",
         "QListWidget#conversionLog",
-        "QLabel#conversionFileLine",
+        "QLabel#runCounter",
+        "QLabel#runFile",
         "QLabel#formatChip",
         "QLabel#modifiedChip",
         'QLabel#stepHint[mono="true"]',

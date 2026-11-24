@@ -62,6 +62,7 @@ class ConversionWorker(QThread):
     finished_conversion = Signal(object)
     failed = Signal(str)
     paused_changed = Signal(bool)
+    font_started = Signal(object)  # Path of the input font being converted
 
     def __init__(self, request: ConversionRequest) -> None:
         super().__init__()
@@ -124,6 +125,7 @@ class ConversionWorker(QThread):
 
     def _on_font_start(self, input_path: Path) -> None:
         self._current_input = input_path
+        self.font_started.emit(input_path)
 
     def _report_outcome(self, outcome: FontOutcome) -> None:
         duration = format_duration(outcome.elapsed)

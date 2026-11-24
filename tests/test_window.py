@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QRect, QSettings, QSize, Qt, QUrl
-from PySide6.QtGui import QCloseEvent, QDropEvent, QEnterEvent, QFont, QImage
+from PySide6.QtGui import QCloseEvent, QDropEvent, QEnterEvent, QFont, QImage, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -31,7 +31,7 @@ from fontvertx.gui.conversion_controller import RunOutcome
 from fontvertx.gui.logs import LogEntry
 from fontvertx.gui.panels.source_panel import CARD_INSET, list_status_text
 from fontvertx.gui.scanner import Source
-from fontvertx.gui.status_pill import StatusState, format_elapsed, format_message
+from fontvertx.gui.status_pill import StatusState, chip_content, format_elapsed, format_message
 from fontvertx.gui.styles import LIGHT, stylesheet
 from fontvertx.gui.window import ConverterWindow, _window_sizes
 from fontvertx.gui.worker import ConversionWorker, RunState, exception_type, format_duration
@@ -265,7 +265,7 @@ def test_initial_state(win: ConverterWindow) -> None:
     assert not win.convert_button.isEnabled()
     assert not win.overwrite.isChecked()
     assert win.convert_button.text() == "Convert"
-    assert not win.last_run_button.isEnabled()
+    assert not win.view_log_button.isEnabled()
     assert win.status_pill.isHidden()
     assert win.summary.text() == "Add fonts to start converting"
     assert win._run_state is RunState.IDLE
@@ -969,19 +969,19 @@ def test_result_status_remains_while_summary_tracks_selection_or_profile(
     _scan(win, [fonts], qtbot_wait)
     win.conversion.setCurrentIndex(win.conversion.findData("ft2wf"))
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
-    result = win.status_pill.label.text()
+    result = win.status_pill.message
     assert win.summary_zone.isHidden()
-    assert not win.status_pill.label.isHidden()
+    assert not win.status_pill.chip.isHidden()
     win._update_buttons()
-    assert win.status_pill.label.text() == result
+    assert win.status_pill.message == result
     assert win.summary_zone.isHidden()
     win.font_filter.setText("a.ttf")
     assert "1 font selected" in win.summary.text()
     assert win.summary_zone.isHidden()
-    assert win.status_pill.label.text() == result
+    assert win.status_pill.message == result
     win.overwrite.setChecked(not win.overwrite.isChecked())
     win._set_output_available(False)
-    assert win.status_pill.label.text() == result
+    assert win.status_pill.message == result
     assert not win.status_pill.isHidden()
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
     win.conversion.setCurrentIndex(win.conversion.findData("woff2ft"))
@@ -1006,7 +1006,7 @@ def test_changing_profile_hides_entire_previous_result(
     assert win.status_pill.isHidden()
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
     assert not win.status_pill.isHidden()
-    assert win.status_pill.label.text()
+    assert win.status_pill.message
 
 
 def test_footer_counts_selected_instances(win: ConverterWindow, tmp_path: Path) -> None:
@@ -1848,11 +1848,16 @@ def test_footer_actions_remain_visible_after_conversion(
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
     QApplication.processEvents()
     QApplication.processEvents()
-    for button in (win.convert_button, win.last_run_button, win.open_output_button):
+    for button in (win.convert_button, win.view_log_button, win.open_output_button):
         assert button.isVisible()
         assert win.rect().contains(button.mapTo(win, button.rect().topLeft()))
         assert win.rect().contains(button.mapTo(win, button.rect().bottomRight()))
-    assert win.last_run_button.text() == "View last run"
+    for button, name in (
+        (win.view_log_button, "View log"),
+        (win.open_output_button, "Open output folder"),
+    ):
+        assert button.accessibleName() == button.toolTip() == name
+        assert button.text() in ("", name)
     assert win.status_pill.pill_layout.indexOf(win.status_pill.result_buttons) >= 0
 
 
@@ -1870,9 +1875,10 @@ def _assert_footer_aligned(win: ConverterWindow) -> None:
     assert card_edges[1] == _edges(win, win.conversion_group)[1]
     assert card.height() == styles.FOOTER_CARD_HEIGHT
     assert win.footer.height() == styles.FOOTER_CARD_HEIGHT + styles.FOOTER_GAP
-    convert = win.convert_button
+    convert = win.primary_slot  # Convert, or Pause / Cancel in its place
     assert convert.height() == styles.FOOTER_HEIGHT
     assert convert.minimumWidth() == convert.maximumWidth() == convert.width()
+    assert win.convert_button.width() == convert.width()
     top = convert.mapTo(card, QPoint()).y()
     assert top == styles.FOOTER_PAD_V
     assert card.height() - top - convert.height() == styles.FOOTER_PAD_V
@@ -1882,7 +1888,15 @@ def _assert_footer_aligned(win: ConverterWindow) -> None:
     pill = win.status_pill
     shown = [
         child
-        for child in (pill.icon, pill.label, pill.progress, pill.result_buttons, pill.close_button)
+        for child in (
+            pill.icon,
+            pill.label,
+            pill.run_view,
+            pill.chip,
+            pill.counts,
+            pill.result_buttons,
+            pill.close_button,
+        )
         if pill.isVisible() and child.isVisible()
     ]
     for child in shown:
@@ -1956,7 +1970,7 @@ def test_footer_card_follows_the_body_and_scrollbar(
     assert win.status_pill.height() == styles.FOOTER_HEIGHT
     _assert_footer_aligned(win)
     assert win.summary_zone.isHidden()
-    for widget in (win.status_pill.label, win.last_run_button, win.open_output_button):
+    for widget in (win.status_pill.chip, win.view_log_button, win.open_output_button):
         assert widget.isVisible()
         assert win.rect().contains(widget.mapTo(win, widget.rect().bottomRight()))
 
@@ -1974,12 +1988,12 @@ def test_footer_geometry_does_not_jump_across_states(
     baseline = (
         win.footer.geometry(),
         win.content_scroll.geometry(),
-        win.convert_button.geometry(),
+        win.primary_slot.geometry(),
         win.status_zone.geometry(),
         win.files_group.mapTo(win, QPoint()),
     )
     win.converter.outcome.total = 1
-    win.conversion_dialog.open()
+    win.worker = _fake_worker(win)
     for state in (
         StatusState.RUNNING,
         StatusState.PAUSED,
@@ -1991,18 +2005,23 @@ def test_footer_geometry_does_not_jump_across_states(
         StatusState.FATAL,
     ):
         win._set_run_status(state, detail="failure" if state is StatusState.FATAL else "")
+        win._update_buttons()
         QApplication.processEvents()
-        assert win.conversion_dialog.status.text() == win.status_pill.label.text()
+        active = state in (StatusState.RUNNING, StatusState.PAUSED)
+        assert win.primary_slot.currentWidget() is (
+            win.run_controls if active else win.convert_button
+        )
         assert (
             win.footer.geometry(),
             win.content_scroll.geometry(),
-            win.convert_button.geometry(),
+            win.primary_slot.geometry(),
             win.status_zone.geometry(),
             win.files_group.mapTo(win, QPoint()),
         ) == baseline
         assert win.status_pill.height() == styles.FOOTER_HEIGHT
         _assert_footer_aligned(win)
-    win.conversion_dialog.accept()
+    win.worker = None
+    win._update_buttons()
     QApplication.processEvents()
     win._dismiss_status()
     QApplication.processEvents()
@@ -2011,37 +2030,52 @@ def test_footer_geometry_does_not_jump_across_states(
     assert win.files_group.mapTo(win, QPoint()) == baseline[4]
 
 
-def test_convert_button_run_labels_and_dialog_gating(win: ConverterWindow, tmp_path: Path) -> None:
+def test_footer_swaps_convert_for_pause_and_cancel_during_a_run(
+    win: ConverterWindow, tmp_path: Path
+) -> None:
     _ready(win, tmp_path)
+    win.show()
     assert win.convert_button.text() == "Convert 1 font"
     assert win.convert_button.isEnabled()
+    win.convert_button.setFocus(Qt.FocusReason.TabFocusReason)
     win.worker = _fake_worker(win)
     win._run_state = RunState.RUNNING
     win._set_run_status(StatusState.RUNNING)
     win._update_buttons()
-    # During a run Convert keeps its label, disabled; the footer card shows progress.
-    assert win.convert_button.text() == "Convert 1 font"
+    # Convert disappears; Pause and Cancel take its place and Pause gets the focus.
+    assert win.primary_slot.currentWidget() is win.run_controls
+    assert win.convert_button.isHidden()
     assert not win.convert_button.isEnabled()
-    assert not win.convert_button.icon().isNull()
+    assert not win.pause_button.isHidden() and not win.cancel_button.isHidden()
+    assert win.focusWidget() is win.pause_button
+    assert win.pause_button.text() == "Pause"
+    # The cards stay visible but cannot be changed; the scroll areas still work.
+    for card in (win.files_group, win.conversion_group, win.profile_options, win.destination_group):
+        assert not card.isEnabled()
+        assert not card.isHidden()
+    assert win.content_scroll.isEnabled() and win.sidebar_scroll.isEnabled()
+    assert not win.files.acceptDrops() and not win.drop_zone.acceptDrops()
+    # View log stays reachable during the run; the output folder is not shown.
+    assert not win.view_log_button.isHidden() and win.open_output_button.isHidden()
     win._run_state = RunState.PAUSED
     win._set_run_status(StatusState.PAUSED)
     win._update_buttons()
-    assert win.convert_button.text() == "Convert 1 font"
-    assert not win.convert_button.isEnabled()
+    assert win.pause_button.text() == "Resume"
+    assert win.pause_button.property("runPrimary") is True
+    assert win.primary_slot.currentWidget() is win.run_controls
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
-    assert win.convert_button.text() == "Convert 1 font"
-    assert not win.convert_button.isEnabled()
-    win.conversion_dialog.open()
-    win._update_buttons()
-    assert win.convert_button.text() == "Convert 1 font"
-    assert not win.convert_button.isEnabled()
-    assert not win.convert_button.icon().isNull()
+    # A result: Convert is back (enabled once the worker has stopped), cards unlocked.
+    assert win.primary_slot.currentWidget() is win.convert_button
+    assert win.focusWidget() is not win.pause_button
+    for card in (win.files_group, win.conversion_group, win.profile_options, win.destination_group):
+        assert card.isEnabled()
+    assert win.files.acceptDrops() and win.drop_zone.acceptDrops()
     win.worker = None
     win._run_state = RunState.IDLE
     win._update_buttons()
-    assert not win.convert_button.isEnabled()
-    win.conversion_dialog.accept()
     assert win.convert_button.isEnabled()
+    assert win.convert_button.text() == "Convert 1 font"
+    assert not win.convert_button.icon().isNull()
     win._set_visible_checks(False)
     assert win.convert_button.text() == "Convert"
     assert win.convert_button.icon().isNull()
@@ -2051,23 +2085,345 @@ def test_convert_button_run_labels_and_dialog_gating(win: ConverterWindow, tmp_p
     assert not win.status_pill.isHidden()
 
 
-def test_summary_history_link_after_dismiss_and_profile_change(
+def test_ctrl_enter_does_nothing_during_a_run(
+    win: ConverterWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ready(win, tmp_path)
+    started: list[object] = []
+    monkeypatch.setattr(win.converter, "start", lambda *args: started.append(args))
+    monkeypatch.setattr(win, "_confirm_modify_rights", lambda: True)
+    win.worker = _fake_worker(win)
+    win._run_state = RunState.RUNNING
+    win._set_run_status(StatusState.RUNNING)
+    win._update_buttons()
+    for shortcut in win.convert_shortcuts:
+        shortcut.activated.emit()
+    win._start_conversion()
+    assert started == []
+    win.worker = None
+
+
+def test_drops_and_wheel_while_cards_are_locked(
+    win: ConverterWindow, fonts: Path, qtbot_wait: Wait, tmp_path: Path
+) -> None:
+    for index in range(40):
+        shutil.copy(fonts / "a.ttf", fonts / f"copy{index}.ttf")
+    _scan(win, [fonts], qtbot_wait)
+    win.conversion.setCurrentIndex(win.conversion.findData("ttf2otf"))
+    win.resize(1200, 600)
+    win.show()
+    QApplication.processEvents()
+    win.worker = _fake_worker(win)
+    win._run_state = RunState.RUNNING
+    win._set_run_status(StatusState.RUNNING)
+    win._update_buttons()
+    count = win.file_list.row_count
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    shutil.copy(fonts / "a.ttf", extra / "extra.ttf")
+    win.files.paths_dropped.emit([str(extra)])
+    win.drop_zone.paths_dropped.emit([str(extra)])
+    assert win.file_list.row_count == count
+    assert [source.path for source in win._sources] == [fonts.resolve()]
+    bar = win.files.verticalScrollBar()
+    assert bar.maximum() > 0
+    bar.setValue(0)
+    viewport = win.files.viewport()
+    center = QPointF(viewport.rect().center())
+    event = QWheelEvent(
+        center,
+        QPointF(viewport.mapToGlobal(viewport.rect().center())),
+        QPoint(),
+        QPoint(0, -120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(viewport, event)
+    assert bar.value() > 0
+    win.worker = None
+    win._update_buttons()
+    win.files.paths_dropped.emit([str(extra)])
+    assert extra.resolve() in [source.path for source in win._sources]
+
+
+def test_summary_log_link_after_dismiss_and_profile_change(
     win: ConverterWindow, tmp_path: Path
 ) -> None:
     _ready(win, tmp_path)
     assert win.history_button.isHidden()
+    assert win.history_button.text() == "View log"
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
     win._dismiss_status()
     assert not win.history_button.isHidden()
     assert not win.status_pill.isVisible()
     win.history_button.click()
-    assert win.conversion_dialog.isVisible()
-    assert win.status_pill.isHidden()
-    win.conversion_dialog.accept()
+    assert win.log_window.isVisible()
+    assert not win.log_window.isModal()
+    win.log_window.close()
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
     win.conversion.setCurrentIndex(win.conversion.findData("ft2wf"))
     assert win.status_pill.isHidden()
     assert not win.history_button.isHidden()
+
+
+def test_view_log_opens_one_non_modal_window_and_raises_it(
+    win: ConverterWindow, tmp_path: Path
+) -> None:
+    _ready(win, tmp_path)
+    win.show()
+    win._append_log(LogEntry.create("INFO", "conversion.started", "Started", {}))
+    win.worker = _fake_worker(win)
+    win._run_state = RunState.RUNNING
+    win._set_run_status(StatusState.RUNNING)
+    win._update_buttons()
+    # During the run, View log stays reachable beside the progress.
+    assert win.view_log_button.isEnabled() and not win.view_log_button.isHidden()
+    assert win.view_log_button.accessibleName() == "View log"
+    win.view_log_button.click()
+    window = win.log_window
+    assert window.isVisible() and not window.isModal()
+    assert window.windowModality() is Qt.WindowModality.NonModal
+    assert window.chip.text() == "Running"
+    # Live log: new entries appear while it is open.
+    before = window.log.count()
+    win._append_log(LogEntry.create("INFO", "font.converted", "Converted a.ttf", {}))
+    assert window.log.count() == before + 1
+    # The main window is still usable: the footer controls work.
+    assert win.pause_button.isEnabled()
+    window.showMinimized()
+    win.view_log_button.click()
+    assert window.isVisible() and not window.isMinimized()
+    assert [w for w in QApplication.topLevelWidgets() if isinstance(w, type(window))] == [window]
+    win._run_state = RunState.PAUSED
+    win._set_run_status(StatusState.PAUSED)
+    assert window.chip.text() == "Paused"
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    assert window.chip.text() == "Done"
+    # Closing the log stops nothing.
+    window.close()
+    assert win.status_pill.state is StatusState.DONE
+    win.worker = None
+
+
+@pytest.mark.parametrize(
+    ("result", "chip"),
+    [
+        (lambda: ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)), "Done"),
+        (
+            lambda: ConversionResult(
+                (
+                    _outcome(FontOutcomeKind.CONVERTED),
+                    _outcome(FontOutcomeKind.FAILED, "ValueError: bad", "b.ttf"),
+                )
+            ),
+            "1 failed",
+        ),
+    ],
+)
+def test_narrow_footer_shows_result_actions_as_icons(
+    app_font: None, win: ConverterWindow, tmp_path: Path, result: Any, chip: str
+) -> None:
+    win.setMinimumSize(MIN_SIZE)
+    win.resize(MIN_SIZE)
+    win.show()
+    _ready(win, tmp_path)
+    _finished(win, result())
+    win._set_output_available(True)
+    for _ in range(3):
+        QApplication.processEvents()
+    assert win.footer_card.width() <= 760
+    pill = win.status_pill
+    assert pill.chip.text() == chip
+    assert pill.compact
+    for button, name in (
+        (win.view_log_button, "View log"),
+        (win.open_output_button, "Open output folder"),
+    ):
+        assert button.text() == ""
+        assert button.accessibleName() == button.toolTip() == name
+        assert not button.icon().isNull()
+        assert button.width() == button.height() == 38
+        assert button.isVisible()
+    # One line, never wrapped: the counts shrink with an ellipsis.
+    assert pill.counts.height() <= pill.height()
+    assert pill.chip.height() < pill.height()
+    _assert_footer_aligned(win)
+    # Wide again: the labels come back.
+    win.resize(1200, MIN_SIZE.height())
+    for _ in range(3):
+        QApplication.processEvents()
+    assert not pill.compact
+    assert win.view_log_button.text() == "View log"
+    assert win.open_output_button.text() == "Open output folder"
+
+
+def test_narrow_footer_keeps_run_buttons_whole(
+    app_font: None, win: ConverterWindow, tmp_path: Path
+) -> None:
+    win.setMinimumSize(MIN_SIZE)
+    win.resize(MIN_SIZE)
+    win.show()
+    _ready(win, tmp_path)
+    win.converter.current_input = tmp_path / ("very-long-folder-name-" * 8) / "font.ttf"
+    win.converter.outcome.total = 146
+    win.worker = _fake_worker(win)
+    win._run_state = RunState.RUNNING
+    win._set_run_status(StatusState.RUNNING)
+    win._update_buttons()
+    for _ in range(3):
+        QApplication.processEvents()
+    pill = win.status_pill
+    for button in (win.pause_button, win.cancel_button):
+        assert button.text() and button.width() >= button.minimumSizeHint().width()
+    assert pill.run_file.display_text() != pill.run_file.text()
+    assert "…" in pill.run_file.display_text()
+    assert pill.run_file.display_text().endswith("font.ttf")  # elided in the middle
+    _assert_footer_aligned(win)
+    win.worker = None
+
+
+def _run_with_logs(win: ConverterWindow, width: int) -> None:
+    """A wide or narrow window with a run in progress (View log enabled)."""
+    win.setMinimumSize(MIN_SIZE)
+    win.resize(width, 600)
+    win.show()
+    win._append_log(LogEntry.create("INFO", "conversion.started", "Started", {}))
+    win.converter.outcome.total = 4
+    win.worker = _fake_worker(win)
+    win._run_state = RunState.RUNNING
+    win._set_run_status(StatusState.RUNNING)
+    win._update_buttons()
+    for _ in range(3):
+        QApplication.processEvents()
+
+
+def _labelled(win: ConverterWindow) -> bool:
+    return win.view_log_button.text() == "View log" and not win.status_pill.compact
+
+
+def _icon_only(win: ConverterWindow) -> bool:
+    return win.status_pill.compact and all(
+        button.text() == "" and button.size() == QSize(38, 38)
+        for button in (win.view_log_button, win.open_output_button)
+    )
+
+
+def _cards_side_by_side(win: ConverterWindow) -> bool:
+    return win.body_layout.direction() == window_module.QBoxLayout.Direction.LeftToRight
+
+
+@pytest.mark.parametrize("width", [layout_manager.BODY_BREAKPOINT, 1200])
+def test_result_buttons_labelled_with_cards_side_by_side(win: ConverterWindow, width: int) -> None:
+    _run_with_logs(win, width)
+    assert _cards_side_by_side(win)
+    assert _labelled(win)  # during the run
+    win._run_state = RunState.PAUSED
+    win._set_run_status(StatusState.PAUSED)
+    assert _labelled(win)
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    win._set_output_available(True)
+    for _ in range(3):
+        QApplication.processEvents()
+    assert _labelled(win)  # after it
+    assert win.open_output_button.text() == "Open output folder"
+    win.worker = None
+
+
+@pytest.mark.parametrize("width", [MIN_WIDTH, layout_manager.BODY_BREAKPOINT - 1])
+def test_result_buttons_icon_only_with_stacked_cards(win: ConverterWindow, width: int) -> None:
+    _run_with_logs(win, width)
+    assert not _cards_side_by_side(win)
+    assert _icon_only(win)  # during the run
+    assert win.view_log_button.accessibleName() == win.view_log_button.toolTip() == "View log"
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    win._set_output_available(True)
+    for _ in range(3):
+        QApplication.processEvents()
+    assert _icon_only(win)  # after it
+    assert win.open_output_button.accessibleName() == "Open output folder"
+    win.worker = None
+
+
+def test_resizing_across_the_breakpoint_switches_cards_and_buttons_together(
+    win: ConverterWindow,
+) -> None:
+    wide, narrow = 1200, layout_manager.BODY_BREAKPOINT - 1
+
+    def resize(width: int) -> None:
+        win.resize(width, 600)
+        for _ in range(3):
+            QApplication.processEvents()
+
+    _run_with_logs(win, wide)
+    assert _cards_side_by_side(win) and _labelled(win)
+    resize(narrow)
+    assert not _cards_side_by_side(win) and _icon_only(win)
+    resize(wide)
+    assert _cards_side_by_side(win) and _labelled(win)
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    win._set_output_available(True)
+    resize(narrow)
+    assert not _cards_side_by_side(win) and _icon_only(win)
+    resize(wide)
+    assert _cards_side_by_side(win) and _labelled(win)
+    win.worker = None
+
+
+@pytest.mark.parametrize(
+    "width", [MIN_WIDTH, layout_manager.BODY_BREAKPOINT - 1, layout_manager.BODY_BREAKPOINT, 1200]
+)
+def test_convert_pause_and_cancel_always_keep_their_labels(
+    win: ConverterWindow, tmp_path: Path, width: int
+) -> None:
+    _ready(win, tmp_path)
+    win.setMinimumSize(MIN_SIZE)
+    win.resize(width, 600)
+    win.show()
+    for _ in range(3):
+        QApplication.processEvents()
+    slot_width = win.primary_slot.width()
+    assert win.convert_button.text() == "Convert 1 font"
+    win.worker = _fake_worker(win)
+    for state, run_state in (
+        (StatusState.RUNNING, RunState.RUNNING),
+        (StatusState.PAUSED, RunState.PAUSED),
+        (StatusState.RUNNING, RunState.RUNNING),
+    ):
+        win._run_state = run_state
+        win._set_run_status(state)
+        win._update_buttons()
+        QApplication.processEvents()
+        assert win.pause_button.text() == ("Resume" if run_state is RunState.PAUSED else "Pause")
+        assert win.cancel_button.text() == "Cancel"
+        assert win.primary_slot.width() == slot_width
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    win.worker = None
+    win._run_state = RunState.IDLE
+    win._update_buttons()
+    QApplication.processEvents()
+    assert win.convert_button.text() == "Convert 1 font"
+    assert win.primary_slot.width() == slot_width
+
+
+@pytest.mark.parametrize("width", [MIN_WIDTH, 1200])
+def test_state_changes_keep_the_button_mode(win: ConverterWindow, width: int) -> None:
+    _run_with_logs(win, width)
+    compact = win.status_pill.compact
+    for state, run_state in (
+        (StatusState.PAUSED, RunState.PAUSED),
+        (StatusState.RUNNING, RunState.RUNNING),
+    ):
+        win._run_state = run_state
+        win._set_run_status(state)
+        assert win.status_pill.compact is compact
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    assert win.status_pill.compact is compact
+    win._set_status("Logs saved.")
+    win._dismiss_status()
+    assert win.status_pill.compact is compact
+    win.worker = None
 
 
 @pytest.mark.parametrize("height", [600, 900])
@@ -2117,7 +2473,7 @@ def test_footer_alignment_at_breakpoint_after_scanning(
     qtbot_wait(lambda: win.content_scroll.horizontalScrollBar().maximum() == 0)
     for _ in range(3):
         QApplication.processEvents()
-    for button in (win.last_run_button, win.open_output_button):
+    for button in (win.view_log_button, win.open_output_button):
         bounds = button.rect().translated(button.mapTo(win, button.rect().topLeft()))
         assert win.rect().contains(bounds)
     _assert_footer_aligned(win)
@@ -2510,7 +2866,7 @@ def test_compact_window_keeps_controls_accessible(win: ConverterWindow, conversi
     assert win.height() == MIN_SIZE.height()
     for button in (
         win.convert_button,
-        win.last_run_button,
+        win.view_log_button,
         win.open_output_button,
     ):
         if not button.isVisible():
@@ -2800,7 +3156,7 @@ def test_options_reflect_controls(win: ConverterWindow, tmp_path: Path) -> None:
 
 def test_save_logs(win: ConverterWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     win._save_logs()
-    assert win.status_pill.label.property("state") == "warning"
+    assert win.status_pill.property("state") == "warning"
     win._append_log(LogEntry.create("INFO", "x.y", "hello", {}))
     target = tmp_path / "logs.jsonl"
     monkeypatch.setattr(
@@ -2808,13 +3164,13 @@ def test_save_logs(win: ConverterWindow, tmp_path: Path, monkeypatch: pytest.Mon
     )
     win._save_logs()
     assert json.loads(target.read_text(encoding="utf-8").splitlines()[0])["event"] == "x.y"
-    assert "Logs saved" in win.status_pill.label.text()
+    assert "Logs saved" in win.status_pill.message
     bad = tmp_path / "no" / "dir" / "l.jsonl"
     monkeypatch.setattr(
         QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(bad), ""))
     )
     win._save_logs()
-    assert win.status_pill.label.property("state") == "error"
+    assert win.status_pill.property("state") == "error"
     monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: ("", "")))
     win._save_logs()
 
@@ -2859,7 +3215,7 @@ def test_open_output_folder_failure(
         conversion_controller_module.QDesktopServices, "openUrl", staticmethod(lambda url: False)
     )
     win._open_output_folder()
-    assert win.status_pill.label.property("state") == "error"
+    assert win.status_pill.property("state") == "error"
     monkeypatch.setattr(
         conversion_controller_module.QDesktopServices, "openUrl", staticmethod(lambda url: True)
     )
@@ -2891,21 +3247,14 @@ def test_conversion_finished_success(win: ConverterWindow, tmp_path: Path) -> No
     win._session_elapsed = 24.2
     _ready(win, tmp_path)
     _finished(win, result)
-    assert win.status_pill.label.text() == "Done — 1 converted · 0:24"
-    assert win.status_pill.label.property("state") == "success"
+    assert win.status_pill.message == "Done — 1 converted · 0:24"
+    assert win.status_pill.property("state") == "success"
     assert win.summary_zone.isHidden()
-    assert win.conversion_dialog.status.text() == "Done — 1 converted · 0:24"
-    assert win.conversion_dialog.status.property("state") == "success"
-    assert (
-        win.status_pill.label.palette().color(win.status_pill.label.foregroundRole()).name()
-        == LIGHT.success_icon
-    )
-    assert (
-        win.conversion_dialog.status.palette()
-        .color(win.conversion_dialog.status.foregroundRole())
-        .name()
-        == LIGHT.success
-    )
+    assert win.status_pill.chip.text() == "Done"
+    assert win.status_pill.counts.text() == "1 converted · 24.2 s"
+    assert win.log_window.chip.text() == "Done"
+    assert win.log_window.chip.property("tone") == "success"
+    assert win.log_window.summary.text().startswith("1 converted · 24.2 s · finished ")
     assert win.open_output_button.isEnabled()
     assert win._log_entries[-1].event == "conversion.completed"
     assert win._log_entries[-1].message == "1 converted, 0 skipped, 0 failed"
@@ -2917,14 +3266,15 @@ def test_conversion_finished_counts_nonzero_outcomes(win: ConverterWindow) -> No
         (_outcome(FontOutcomeKind.CONVERTED), _outcome(FontOutcomeKind.SKIPPED))
     )
     _finished(win, result)
-    assert win.status_pill.label.text() == "Done — 1 converted · 1 skipped · 0:01"
+    assert win.status_pill.message == "Done — 1 converted · 1 skipped · 0:01"
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.SKIPPED),)))
-    assert win.status_pill.label.text() == "Done — 0 converted · 1 skipped · 0:01"
+    assert win.status_pill.message == "Done — 0 converted · 1 skipped · 0:01"
     _finished(win, ConversionResult())
-    assert win.status_pill.label.text() == "Done — 0 converted · 0:01"
+    assert win.status_pill.message == "Done — 0 converted · 0:01"
     win._set_status("Ready")
-    assert win.status_pill.label.property("state") == ""
-    assert win.conversion_dialog.status.property("state") == "success"
+    assert win.status_pill.property("state") == ""
+    # A notice does not change the log window, which still shows the last run.
+    assert win.log_window.chip.property("tone") == "success"
 
 
 def test_conversion_finished_with_failures(win: ConverterWindow, tmp_path: Path) -> None:
@@ -2937,15 +3287,15 @@ def test_conversion_finished_with_failures(win: ConverterWindow, tmp_path: Path)
     )
     _ready(win, tmp_path)
     _finished(win, result)
-    assert win.status_pill.label.property("state") == "error"
+    assert win.status_pill.property("state") == "error"
     assert win.summary_zone.isHidden()
-    assert "b.ttf: ValueError: bad" in win.status_pill.label.toolTip()
-    assert "1 converted · 1 failed" in win.status_pill.label.text()
-    assert "0 skipped" not in win.status_pill.label.text()
+    assert "b.ttf: ValueError: bad" in win.status_pill.counts.toolTip()
+    assert "1 converted · 1 failed" in win.status_pill.message
+    assert "0 skipped" not in win.status_pill.message
     assert win._log_entries[-1].event == "conversion.failed"
     assert win.open_output_button.isEnabled()
     _finished(win, ConversionResult(error="Boom: x"))
-    assert "Boom: x" in win.status_pill.label.toolTip()
+    assert "Boom: x" in win.status_pill.counts.toolTip()
 
 
 def test_conversion_finished_cancelled(win: ConverterWindow, tmp_path: Path) -> None:
@@ -2953,20 +3303,20 @@ def test_conversion_finished_cancelled(win: ConverterWindow, tmp_path: Path) -> 
     result = ConversionResult((_outcome(FontOutcomeKind.CONVERTED),), cancelled=True)
     _ready(win, tmp_path)
     _finished(win, result)
-    assert win.status_pill.label.text().startswith("Cancelled — 1 of 1 converted · ")
-    assert "0 skipped" not in win.status_pill.label.text()
-    assert win.status_pill.label.property("state") == "neutral"
+    assert win.status_pill.message.startswith("Cancelled — 1 of 1 converted · ")
+    assert "0 skipped" not in win.status_pill.message
+    assert win.status_pill.property("state") == "neutral"
     assert win.summary_zone.isHidden()
     assert win.open_output_button.isEnabled()
     assert win._log_entries[-1].event == "conversion.cancelled"
     win._session_elapsed = 1.0
     _finished(win, ConversionResult(cancelled=True))
-    assert win.status_pill.label.text() == "Cancelled — 0 of 0 converted · 0:01"
+    assert win.status_pill.message == "Cancelled — 0 of 0 converted · 0:01"
 
 
 def test_conversion_without_output_disables_output_action(win: ConverterWindow) -> None:
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.SKIPPED),)))
-    assert not win.last_run_button.isHidden()
+    assert not win.view_log_button.isHidden()
     assert not win.open_output_button.isEnabled()
 
 
@@ -2975,7 +3325,7 @@ def test_conversion_without_saved_files_opens_run_input_folder(
 ) -> None:
     win.converter.run_input_directory = tmp_path
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.SKIPPED),)))
-    assert win.conversion_dialog.open_output_button.isEnabled()
+    assert win.open_output_button.isEnabled()
     assert win._output_folder_to_open() == tmp_path
 
 
@@ -2983,8 +3333,8 @@ def test_conversion_failed(win: ConverterWindow, tmp_path: Path) -> None:
 
     _ready(win, tmp_path)
     win._conversion_failed("RuntimeError: x")
-    assert win.status_pill.label.text().startswith("Error — conversion stopped")
-    assert "RuntimeError: x" in win.status_pill.label.toolTip()
+    assert win.status_pill.message.startswith("Error — conversion stopped")
+    assert "RuntimeError: x" in win.status_pill.counts.toolTip()
     assert win.summary_zone.isHidden()
     assert win._log_entries[-1].context["error_type"] == "RuntimeError"
 
@@ -3004,9 +3354,10 @@ def test_fatal_error_keeps_individual_results_and_output_paths(
     assert (outcome.total, outcome.converted, outcome.skipped, outcome.failed) == (4, 1, 1, 1)
     assert outcome.saved_files == [saved]
     assert outcome.failed_files == [Path("c.ttf")]
-    assert win.conversion_dialog.file_line.text() == "Failed: c.ttf"
-    assert win.status_pill.label.text() == "Error — conversion stopped · 1 converted · 0:03"
-    assert win.status_pill.label.toolTip() == "RuntimeError: unexpected"
+    assert win.status_pill.chip.text() == "Error"
+    assert win.status_pill.counts.text() == "Conversion stopped · 1 converted · 1 skipped · 3.0 s"
+    assert win.status_pill.message == "Error — conversion stopped · 1 converted · 0:03"
+    assert win.status_pill.counts.toolTip() == "RuntimeError: unexpected"
     assert win.open_output_button.isEnabled()
     assert win._output_folder_to_open() == saved.parent
 
@@ -3014,35 +3365,31 @@ def test_fatal_error_keeps_individual_results_and_output_paths(
 def test_transient_error_restores_last_result(win: ConverterWindow, tmp_path: Path) -> None:
     _ready(win, tmp_path)
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
-    result = win.status_pill.label.text()
+    result = win.status_pill.message
     win._set_status("Could not save logs: denied", "error")
     assert win.status_pill.state is StatusState.NOTICE
     assert win.status_pill.result_buttons.isHidden()
-    assert win.status_pill.label.text() == "Could not save logs: denied"
+    assert win.status_pill.message == "Could not save logs: denied"
     win.status_pill.close_button.click()
     assert win.status_pill.state is StatusState.DONE
-    assert win.status_pill.label.text() == result
+    assert win.status_pill.message == result
     win.status_pill.close_button.click()
     assert win.status_pill.isHidden()
     assert not win.summary_zone.isHidden()
 
 
-def test_final_actions_follow_dialog_visibility(win: ConverterWindow, tmp_path: Path) -> None:
+def test_final_actions_do_not_depend_on_log_window(win: ConverterWindow, tmp_path: Path) -> None:
     _ready(win, tmp_path)
     win.show()
-    win.conversion_dialog.open()
+    win._show_log_window()
     QApplication.processEvents()
     _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
-    assert win.status_pill.result_buttons.isHidden()
-    assert win.status_pill.close_button.isHidden()
-    win.conversion_dialog.accept()
+    assert not win.status_pill.result_buttons.isHidden()
+    assert not win.open_output_button.isHidden()
+    win.log_window.close()
     QApplication.processEvents()
     assert not win.status_pill.result_buttons.isHidden()
-    assert not win.status_pill.close_button.isHidden()
-    win._show_conversion_dialog()
-    QApplication.processEvents()
-    assert win.status_pill.result_buttons.isHidden()
-    win.conversion_dialog.accept()
+    assert win.status_pill.close_button.isHidden()
 
 
 def test_worker_fatal_after_partial_success_preserves_outcome(
@@ -3073,21 +3420,22 @@ def test_worker_fatal_after_partial_success_preserves_outcome(
     assert win.converter.outcome.skipped == 1
     assert win.converter.outcome.saved_files == [saved]
     assert win.status_pill.state is StatusState.FATAL
-    assert "1 converted" in win.status_pill.label.text()
-    assert "after saved file" in win.status_pill.label.toolTip()
-    assert win.status_pill.result_buttons.isHidden()
-    win.conversion_dialog.accept()
+    assert "1 converted" in win.status_pill.message
+    assert "after saved file" in win.status_pill.counts.toolTip()
     assert not win.status_pill.result_buttons.isHidden()
+    assert not win.log_window.isVisible()  # the run never opens the log by itself
+    assert win.primary_slot.currentWidget() is win.convert_button
+    assert win.files_group.isEnabled()
 
 
 def test_partial_and_complete_failures_use_distinct_states(win: ConverterWindow) -> None:
     failure = _outcome(FontOutcomeKind.FAILED, "invalid")
     _finished(win, ConversionResult((failure,)))
     assert win.status_pill.state is StatusState.FAILED
-    assert win.status_pill.label.text().startswith("Failed — 0 of 1 converted")
+    assert win.status_pill.message.startswith("Failed — 0 of 1 converted")
     _finished(win, ConversionResult((failure, _outcome(FontOutcomeKind.SKIPPED))))
     assert win.status_pill.state is StatusState.ERRORS
-    assert win.status_pill.label.text().startswith("Done with errors — 0 converted · 1 failed")
+    assert win.status_pill.message.startswith("Done with errors — 0 converted · 1 failed")
 
 
 @pytest.mark.parametrize(
@@ -3122,7 +3470,7 @@ def test_pause_resume_state_machine(win: ConverterWindow) -> None:
     win._on_paused_changed(True)
     assert win._run_state is RunState.PAUSED
     assert win.pause_button.text() == "Resume"
-    assert win.status_pill.label.text().startswith("Paused")
+    assert win.status_pill.message.startswith("Paused")
     win._toggle_pause()
     assert worker._running.is_set()
     win._on_paused_changed(False)
@@ -3131,6 +3479,183 @@ def test_pause_resume_state_machine(win: ConverterWindow) -> None:
     win._elapsed_timer.stop()
     win.worker = None
     win._on_paused_changed(True)
+
+
+def _converting(win: ConverterWindow, tmp_path: Path) -> ConversionWorker:
+    """A run in progress on a (not started) worker, converting font 2 of 4."""
+    worker = _fake_worker(win)
+    win._run_state = RunState.RUNNING
+    win.converter.outcome.total = 4
+    win.converter.progress_done = 1
+    win.converter.current_input = tmp_path / "big" / "font.ttf"
+    win.converter.session_started_at = 0.0
+    win._elapsed_timer.start()
+    win._set_run_status(StatusState.RUNNING)
+    win._update_buttons()
+    return worker
+
+
+def test_pause_request_says_the_current_font_finishes_first(
+    win: ConverterWindow, tmp_path: Path
+) -> None:
+    _converting(win, tmp_path)
+    pill = win.status_pill
+    current = str(tmp_path / "big" / "font.ttf")
+    assert pill.run_title.text() == "Converting…"
+    assert pill.run_file.text() == current
+    assert pill.run_file.toolTip() == ""
+    win.pause_button.click()
+    assert win._run_state is RunState.PAUSING
+    assert pill.run_title.text() == "Pausing…"
+    assert pill.run_file.text() == "Pauses when the current font is done."
+    assert pill.run_file.elide_mode is Qt.TextElideMode.ElideRight
+    assert pill.run_file.toolTip() == current
+    assert pill.accessibleDescription() == (
+        "Pausing… · 1 / 4 · Pauses when the current font is done."
+    )
+    assert win._log_entries[-1].event == "conversion.pause_requested"
+    assert win._log_entries[-1].message == "Pause requested: the current font finishes first"
+    assert win.log.item(win.log.count() - 1).text() == win._log_entries[-1].display_text()
+    # Buttons keep their labels; Pause waits, Cancel stays available.
+    assert win.pause_button.text() == "Pause" and not win.pause_button.isEnabled()
+    assert win.cancel_button.text() == "Cancel" and win.cancel_button.isEnabled()
+    # Progress and timer refreshes keep rendering, and keep "Pausing…".
+    win._on_conversion_progress(2, 4)
+    assert pill.run_counter.text() == "2 / 4"
+    assert win.progress.value() == 2
+    win._refresh_progress_status()
+    assert pill.run_title.text() == "Pausing…"
+    assert win._elapsed_timer.isActive()
+    win._on_paused_changed(True)
+    assert pill.run_title.text() == "Paused"
+    assert pill.run_file.text() == "The next font starts when you resume."
+    assert pill.run_file.toolTip() == ""
+    assert pill.accessibleDescription().startswith("Paused · 2 / 4")
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def test_cancel_request_says_the_current_font_finishes_first(
+    win: ConverterWindow, tmp_path: Path
+) -> None:
+    worker = _converting(win, tmp_path)
+    pill = win.status_pill
+    win.cancel_button.click()
+    assert win._cancelling and worker._running.is_set()
+    assert pill.run_title.text() == "Cancelling…"
+    assert pill.run_file.text() == "Stops when the current font is done."
+    assert pill.run_file.toolTip() == str(tmp_path / "big" / "font.ttf")
+    assert pill.accessibleDescription() == (
+        "Cancelling… · 1 / 4 · Stops when the current font is done."
+    )
+    assert win._log_entries[-1].event == "conversion.cancel_requested"
+    assert win._log_entries[-1].message == "Cancel requested: the current font finishes first"
+    entries = len(win._log_entries)
+    win._request_cancel()
+    assert len(win._log_entries) == entries
+    win._on_conversion_progress(2, 4)
+    assert pill.run_title.text() == "Cancelling…"
+    assert pill.run_counter.text() == "2 / 4"
+    assert win.cancel_button.text() == "Cancel" and not win.cancel_button.isEnabled()
+    assert not win.pause_button.isEnabled()
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def test_cancel_while_pausing_wins_over_pausing(win: ConverterWindow, tmp_path: Path) -> None:
+    _converting(win, tmp_path)
+    win.pause_button.click()
+    win._request_cancel()
+    assert win.status_pill.run_title.text() == "Cancelling…"
+    # The pause no longer happens once the run is cancelling.
+    win._on_paused_changed(True)
+    assert win._run_state is RunState.PAUSING
+    assert win.status_pill.run_title.text() == "Cancelling…"
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def test_cancel_from_paused_logs_no_request(win: ConverterWindow, tmp_path: Path) -> None:
+    worker = _converting(win, tmp_path)
+    win._toggle_pause()
+    win._on_paused_changed(True)
+    entries = len(win._log_entries)
+    win._request_cancel()
+    assert worker._running.is_set()
+    assert len(win._log_entries) == entries
+    assert win.status_pill.run_title.text() == "Paused"
+    # The worker resumes to stop: the footer renders the cancel at once.
+    win._on_paused_changed(False)
+    assert win._run_state is RunState.RUNNING
+    assert win.status_pill.run_title.text() == "Cancelling…"
+    assert not any(entry.event == "conversion.resumed" for entry in win._log_entries)
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def _chip(win: ConverterWindow) -> tuple[str, str, str]:
+    chip = win.log_window.chip
+    return chip.text(), chip.icon_name, chip.property("tone")
+
+
+@pytest.mark.parametrize(
+    ("state", "pausing", "cancelling", "expected"),
+    [
+        (StatusState.RUNNING, False, False, ("Running", "sync_alt")),
+        (StatusState.RUNNING, True, False, ("Pausing…", "pause")),
+        (StatusState.RUNNING, False, True, ("Cancelling…", "close")),
+        (StatusState.RUNNING, True, True, ("Cancelling…", "close")),
+        (StatusState.PAUSED, True, True, ("Paused", "pause")),
+        (StatusState.CANCELLED, False, True, ("Cancelled", "close")),
+        (StatusState.DONE, True, True, ("Done", "check")),
+    ],
+)
+def test_chip_content_follows_the_run_phase(
+    state: StatusState, pausing: bool, cancelling: bool, expected: tuple[str, str]
+) -> None:
+    assert chip_content(state, pausing=pausing, cancelling=cancelling) == expected
+
+
+def test_log_window_chip_follows_pausing(win: ConverterWindow, tmp_path: Path) -> None:
+    _converting(win, tmp_path)
+    assert _chip(win) == ("Running", "sync_alt", "running")
+    win.pause_button.click()
+    assert _chip(win) == ("Pausing…", "pause", "running")
+    assert win.log_window.chip.text() == win.status_pill.run_title.text()
+    # While the current font finishes, refreshes keep the chip and the live summary.
+    win._on_conversion_progress(2, 4)
+    assert _chip(win) == ("Pausing…", "pause", "running")
+    assert win.log_window.summary.text().startswith("2 / 4 · ")
+    win._on_paused_changed(True)
+    assert _chip(win) == ("Paused", "pause", "warning")
+    win._elapsed_timer.stop()
+    win.worker = None
+
+
+def test_log_window_chip_follows_cancelling(win: ConverterWindow, tmp_path: Path) -> None:
+    _converting(win, tmp_path)
+    win.cancel_button.click()
+    assert _chip(win) == ("Cancelling…", "close", "running")
+    assert win.log_window.chip.text() == win.status_pill.run_title.text()
+    win._on_conversion_progress(2, 4)
+    assert _chip(win) == ("Cancelling…", "close", "running")
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),), cancelled=True))
+    assert _chip(win) == ("Cancelled", "close", "neutral")
+    win.worker = None
+
+
+def test_log_window_chip_cancel_while_paused(win: ConverterWindow, tmp_path: Path) -> None:
+    _converting(win, tmp_path)
+    win._toggle_pause()
+    win._on_paused_changed(True)
+    assert _chip(win) == ("Paused", "pause", "warning")
+    win._request_cancel()
+    assert _chip(win) == ("Paused", "pause", "warning")
+    win._on_paused_changed(False)  # resumes only to stop
+    assert _chip(win) == ("Cancelling…", "close", "running")
+    _finished(win, ConversionResult(cancelled=True))
+    assert _chip(win) == ("Cancelled", "close", "neutral")
+    win.worker = None
 
 
 def test_cancel_conversion_without_confirmation(win: ConverterWindow) -> None:
@@ -3170,14 +3695,22 @@ def test_full_conversion_end_to_end(
     out.mkdir()
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(out)))
     win.destination_folder_radio.setChecked(True)
-    monkeypatch.setattr(win.conversion_dialog, "open", lambda: None)
     monkeypatch.setattr(win, "_confirm_modify_rights", lambda: True)
+    win.show()
     win._start_conversion()
+    assert win.primary_slot.currentWidget() is win.run_controls
+    assert win.focusWidget() is win.pause_button
+    assert not win.files_group.isEnabled()
+    assert not win.log_window.isVisible()
+    assert win.log_window.title.text() == "Last run · TTF → OTF"
     qtbot_wait(lambda: win.worker is None, 60.0)
-    assert win.status_pill.label.text().startswith("Done")
+    assert win.primary_slot.currentWidget() is win.convert_button
+    assert win.files_group.isEnabled()
+    assert win.convert_button.isEnabled()
+    assert win.status_pill.message.startswith("Done")
     assert any(out.rglob("*.otf"))
-    assert win.last_run_button.isEnabled()
-    assert not win.last_run_button.isHidden()
+    assert win.view_log_button.isEnabled()
+    assert not win.view_log_button.isHidden()
     assert not win.open_output_button.isHidden()
     win.destination_source_radio.setChecked(True)
     assert win._output_folder_to_open() == out

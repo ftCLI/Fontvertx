@@ -9,15 +9,22 @@ in one place instead of being spread across the window.
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 
 from fontvertx.gui.logs import LogEntry
+from fontvertx.gui.profiles import CONVERSIONS
 from fontvertx.gui.status_pill import StatusState
 from fontvertx.gui.worker import ConversionWorker, RunState, exception_type
 from fontvertx.models import ConversionRequest, ConversionResult, FontOutcome, FontOutcomeKind
+
+
+def profile_name(conversion: str) -> str:
+    """Short profile name for titles: "TTF → OTF" for "TTF → OTF (TrueType → PostScript)"."""
+    return CONVERSIONS.get(conversion, conversion).split(" (", 1)[0]
 
 
 @dataclass
@@ -57,6 +64,8 @@ class ConversionController(QObject):
         self.last_run_available = False
         self.run_output_directory: Path | None = None
         self.run_input_directory: Path | None = None
+        self.current_input: Path | None = None
+        self.finished_at: datetime | None = None
         self.elapsed_timer = QTimer(self)
         self.elapsed_timer.setInterval(1000)
         self.elapsed_timer.timeout.connect(self.refresh_progress_status)
@@ -80,6 +89,9 @@ class ConversionController(QObject):
         w.progress.setValue(0)
         w._set_output_available(False)
         w.cancel_button.setEnabled(True)
+        w.log_window.set_profile(profile_name(request.conversion))
+        self.current_input = None
+        self.finished_at = None
         self.saved_files = []
         self.progress_done = 0
         self.progress_total = total
@@ -94,6 +106,7 @@ class ConversionController(QObject):
         self.worker.finished_conversion.connect(self.finished)
         self.worker.failed.connect(self.failed)
         self.worker.finished.connect(self.worker_stopped)
+        self.worker.font_started.connect(self.on_font_started)
         self.session_started_at = time.perf_counter()
         w._set_run_status(StatusState.RUNNING)
         w._update_buttons()
@@ -112,7 +125,10 @@ class ConversionController(QObject):
         )
         self.elapsed_timer.start()
         self.worker.start()
-        w.conversion_dialog.open()
+
+    def on_font_started(self, path: Path) -> None:
+        self.current_input = path
+        self.refresh_progress_status()
 
     def on_worker_event(self, event: LogEntry) -> None:
         if event.outcome is not None:
@@ -126,13 +142,15 @@ class ConversionController(QObject):
 
     def finish_timer(self) -> None:
         self.elapsed_timer.stop()
+        self.finished_at = datetime.now()
         if self.session_started_at is not None:
             self.session_elapsed = time.perf_counter() - self.session_started_at
             self.session_started_at = None
         self.outcome.elapsed = self.session_elapsed
 
     def refresh_progress_status(self) -> None:
-        if self.cancelling or self.run_state in (RunState.PAUSING, RunState.PAUSED):
+        # Keeps rendering while a pause or a cancel waits for the current font.
+        if self.run_state not in (RunState.RUNNING, RunState.PAUSING):
             return
         self.outcome.elapsed = self.elapsed()
         self.w._set_run_status(StatusState.RUNNING)
@@ -163,6 +181,15 @@ class ConversionController(QObject):
             self.run_state = RunState.PAUSING
             self.w.pause_button.setEnabled(False)
             self.worker.pause()
+            self.w._append_log(
+                LogEntry.create(
+                    "INFO",
+                    "conversion.pause_requested",
+                    "Pause requested: the current font finishes first",
+                    {"done": self.progress_done, "total": self.progress_total},
+                )
+            )
+            self.refresh_progress_status()
         elif self.run_state is RunState.PAUSED:
             self.worker.resume()
 
@@ -194,18 +221,31 @@ class ConversionController(QObject):
                 w._append_log(
                     LogEntry.create("INFO", "conversion.resumed", "Resumed conversion", {})
                 )
-                self.refresh_progress_status()
+            # Also when resuming because of a cancel: the footer shows "Cancelling…".
+            self.refresh_progress_status()
         w._update_buttons()
 
     def cancel(self) -> None:
         self.request_cancel()
 
     def request_cancel(self) -> None:
-        if self.worker is None:
-            return
+        if self.worker is None or self.cancelling:
+            return  # a second Cancel changes nothing
         self.w.cancel_button.setEnabled(False)
         self.cancelling = True
         self.worker.cancel()
+        if self.run_state is not RunState.PAUSED:
+            # From Paused the run stops almost at once; otherwise the font being
+            # converted finishes first.
+            self.w._append_log(
+                LogEntry.create(
+                    "INFO",
+                    "conversion.cancel_requested",
+                    "Cancel requested: the current font finishes first",
+                    {"done": self.progress_done, "total": self.progress_total},
+                )
+            )
+            self.refresh_progress_status()
         self.w._update_buttons()
 
     def finished(self, result: ConversionResult) -> None:

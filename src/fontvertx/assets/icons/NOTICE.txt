@@ -6,10 +6,10 @@ Style: Outlined, weight 400, grade 0, fill 0, optical size 20. The files are
 unmodified copies of <name>_20px.svg from
 https://github.com/google/material-design-icons/tree/master/symbols/web
 
-add, arrow_back, arrow_downward, arrow_forward, arrow_upward, cancel, check,
-check_circle, chevron_right, close, error, expand_less,
-expand_more, history, pause_circle, priority_high, progress_activity, remove,
-sync_alt, tune, unfold_less, unfold_more, warning
+add, arrow_back, arrow_downward, arrow_forward, arrow_upward, check,
+chevron_right, close, expand_less, expand_more, folder_open, pause,
+play_arrow, priority_high, remove, sync_alt, tune, unfold_less,
+unfold_more, visibility, warning
 
 Exception: check_wght600.svg is check_wght600_20px.svg from the same set
 (Outlined, weight 600, grade 0, fill 0, optical size 20), used for the

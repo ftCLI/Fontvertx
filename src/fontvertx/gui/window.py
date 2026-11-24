@@ -19,6 +19,7 @@ from PySide6.QtGui import (
     QResizeEvent,
     QShortcut,
     QShowEvent,
+    QWheelEvent,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -44,7 +45,6 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.gui.conversion_controller import ConversionController
-from fontvertx.gui.conversion_dialog import ConversionDialog
 from fontvertx.gui.file_list import FontFileList
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.instance_tree import InstanceTree
@@ -56,6 +56,7 @@ from fontvertx.gui.layout_manager import (
     LayoutManager,
     _window_sizes,
 )
+from fontvertx.gui.log_window import LogWindow
 from fontvertx.gui.logs import LogEntry
 from fontvertx.gui.organization_dialog import (
     CRITERIA,
@@ -85,7 +86,15 @@ from fontvertx.gui.settings_store import (
     OUTPUT_DIR_KEY,
     SettingsStore,
 )
-from fontvertx.gui.status_pill import StatusPill, StatusState
+from fontvertx.gui.status_pill import (
+    ACTIVE_STATES,
+    StatusPill,
+    StatusState,
+    chip_content,
+    format_elapsed,
+    result_segments,
+    state_tone,
+)
 from fontvertx.gui.styles import (
     FOOTER_CARD_BORDER,
     FOOTER_CARD_HEIGHT,
@@ -97,6 +106,7 @@ from fontvertx.gui.styles import (
     LIGHT,
     stylesheet,
 )
+from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import (
     ConversionSelector,
     DropZone,
@@ -108,6 +118,7 @@ from fontvertx.gui.widgets import (
     OverlayScrollBar,
     ScrollOverflowFade,
     StepBadge,
+    scroll_with_wheel,
 )
 from fontvertx.gui.worker import ConversionWorker, RunState
 from fontvertx.inspection import FontInfo, incompatibility
@@ -267,18 +278,54 @@ class ConverterWindow(QMainWindow):
         for shortcut in self.convert_shortcuts:
             shortcut.activated.connect(self.convert_button.click)
         self.convert_button.setEnabled(False)
-        self.conversion_dialog = ConversionDialog(self)
-        self.cancel_button = self.conversion_dialog.cancel_button
-        self.pause_button = self.conversion_dialog.pause_button
-        self.progress = self.conversion_dialog.progress
-        self.log = self.conversion_dialog.log
-        self.save_logs_button = self.conversion_dialog.save_logs_button
+        # While a run is active, Pause / Resume and Cancel take Convert's place (same
+        # slot, same width). Unlike View log / Open output folder, these three always keep
+        # their labels: the slot's width is fixed, so icons would free no space, and an
+        # icon-only Cancel (an X) would read as a dismiss button.
+        self.pause_button = KeyboardPushButton("Pause")
+        self.pause_button.setToolTip(
+            wrap_tip("Pause after the font being converted; Resume continues with the next one.")
+        )
+        self.cancel_button = KeyboardPushButton("Cancel")
+        self.cancel_button.setToolTip(
+            wrap_tip("Stops the conversion. Files already converted are kept.")
+        )
+        self.cancel_button.setIcon(
+            material_icon("close", LIGHT.text, size=18, disabled_color=LIGHT.text_disabled)
+        )
+        self._pause_icon = material_icon(
+            "pause", LIGHT.text, size=18, disabled_color=LIGHT.text_disabled
+        )
+        self._resume_icon = material_icon(
+            "play_arrow", LIGHT.on_primary, size=18, disabled_color=LIGHT.text_disabled
+        )
+        self.pause_button.setIcon(self._pause_icon)
+        for button in (self.pause_button, self.cancel_button):
+            button.setProperty("runAction", True)
+            button.setProperty("runPrimary", False)
+            button.setIconSize(QSize(18, 18))
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.run_controls = QWidget()
+        run_controls_layout = QHBoxLayout(self.run_controls)
+        run_controls_layout.setContentsMargins(0, 0, 0, 0)
+        run_controls_layout.setSpacing(8)
+        run_controls_layout.addWidget(self.pause_button)
+        run_controls_layout.addWidget(self.cancel_button)
+        self.primary_slot = QStackedWidget()
+        self.primary_slot.setFixedHeight(FOOTER_HEIGHT)
+        self.primary_slot.addWidget(self.convert_button)
+        self.primary_slot.addWidget(self.run_controls)
+        self.primary_slot.setCurrentWidget(self.convert_button)
+        self._cards_locked = False
+        self.log_window = LogWindow(self)
+        self.log = self.log_window.log
+        self.save_logs_button = self.log_window.save_logs_button
         self.summary = ElidedLabel()
         self.summary.setObjectName("footerSummary")
         self.summary.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.history_button = KeyboardPushButton("View last run")
+        self.history_button = KeyboardPushButton("View log")
         self.history_button.setObjectName("footerHistory")
-        self.history_button.setIcon(material_icon("history", LIGHT.accent, size=16))
+        self.history_button.setIcon(material_icon("visibility", LIGHT.accent, size=16))
         self.history_button.setIconSize(QSize(16, 16))
         self.history_button.hide()
         self.summary_zone = QWidget()
@@ -288,9 +335,10 @@ class ConverterWindow(QMainWindow):
         summary_layout.addWidget(self.summary, 1)
         summary_layout.addWidget(self.history_button)
         self.status_pill = StatusPill()
-        self.last_run_button = self.status_pill.last_run_button
+        self.progress = self.status_pill.progress
+        self.view_log_button = self.status_pill.log_button
         self.open_output_button = self.status_pill.output_button
-        self.last_run_button.setEnabled(False)
+        self.view_log_button.setEnabled(False)
         self.open_output_button.setEnabled(False)
         self._last_status: tuple[StatusState, str] | None = None
         self.status_zone = QStackedWidget()
@@ -324,7 +372,7 @@ class ConverterWindow(QMainWindow):
         )
         self.footer_layout.setSpacing(CARD_GAP)
         self.footer_layout.addWidget(self.status_zone, 1)
-        self.footer_layout.addWidget(self.convert_button)
+        self.footer_layout.addWidget(self.primary_slot)
         self.status_pill.toneChanged.connect(lambda _tone: self._sync_footer_tone())
         self.status_zone.currentChanged.connect(lambda _index: self._sync_footer_tone())
         self.content_scroll = QScrollArea()
@@ -332,6 +380,9 @@ class ConverterWindow(QMainWindow):
         self.content_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self.content_scroll.setWidget(page)
         self.content_scroll.viewport().installEventFilter(self)
+        # While a run locks the cards, the font lists still scroll with the wheel.
+        self.files.viewport().installEventFilter(self)
+        self.instance_tree.viewport().installEventFilter(self)
         central = QWidget()
         central.setObjectName("page")
         central_layout = QVBoxLayout(central)
@@ -345,9 +396,9 @@ class ConverterWindow(QMainWindow):
 
         self.add_button.clicked.connect(self._choose_files)
         self.clear_button.clicked.connect(self._clear_files)
-        self.files.paths_dropped.connect(self._add_paths)
-        self.instance_tree.paths_dropped.connect(self._add_paths)
-        self.drop_zone.paths_dropped.connect(self._add_paths)
+        self.files.paths_dropped.connect(self._add_dropped_paths)
+        self.instance_tree.paths_dropped.connect(self._add_dropped_paths)
+        self.drop_zone.paths_dropped.connect(self._add_dropped_paths)
         self.files.selectionModel().selectionChanged.connect(lambda *_: self._update_buttons())
         self.destination_button.clicked.connect(self._choose_destination)
         self.destination_source_radio.toggled.connect(self._on_destination_mode_changed)
@@ -355,12 +406,10 @@ class ConverterWindow(QMainWindow):
         self.cancel_button.clicked.connect(self._cancel_conversion)
         self.pause_button.clicked.connect(self._toggle_pause)
         self.open_output_button.clicked.connect(self._open_output_folder)
-        self.conversion_dialog.open_output_button.clicked.connect(self._open_output_folder)
         self.save_logs_button.clicked.connect(self._save_logs)
-        self.last_run_button.clicked.connect(self._show_conversion_dialog)
-        self.history_button.clicked.connect(self._show_conversion_dialog)
+        self.view_log_button.clicked.connect(self._show_log_window)
+        self.history_button.clicked.connect(self._show_log_window)
         self.status_pill.dismissed.connect(self._dismiss_status)
-        self.conversion_dialog.finished.connect(self._dialog_finished)
         self._configure_tab_order()
         self.profile_options.set_conversion(None)
         self._update_body_layout()
@@ -492,6 +541,15 @@ class ConverterWindow(QMainWindow):
             and event.type() == QEvent.Type.Resize
         ):
             QTimer.singleShot(0, self, self._sync_footer_margins)
+        if (
+            getattr(self, "_cards_locked", False)
+            and isinstance(event, QWheelEvent)
+            and watched in (self.files.viewport(), self.instance_tree.viewport())
+        ):
+            # The list is disabled with its card, but can still be scrolled to look.
+            view = self.files if watched is self.files.viewport() else self.instance_tree
+            scroll_with_wheel(view, event)
+            return True
         return super().eventFilter(watched, event)
 
     def _sync_footer_margins(self) -> None:
@@ -577,10 +635,12 @@ class ConverterWindow(QMainWindow):
             self.overwrite,
             self.organization_button,
             self.history_button,
-            self.last_run_button,
-            self.open_output_button,
             self.status_pill.close_button,
+            self.view_log_button,
+            self.open_output_button,
             self.convert_button,
+            self.pause_button,
+            self.cancel_button,
         ]
         for current, following in zip(chain, chain[1:], strict=False):
             QWidget.setTabOrder(current, following)
@@ -738,6 +798,10 @@ class ConverterWindow(QMainWindow):
         if selected:
             self.store.set_dir(INPUT_DIR_KEY, selected)
             self._add_paths([selected], recursive)
+
+    def _add_dropped_paths(self, paths: list[str]) -> None:
+        if not self._cards_locked:
+            self._add_paths(paths)
 
     def _add_paths(self, paths: list[str], recursive: bool = False) -> None:
         changed = False
@@ -987,9 +1051,10 @@ class ConverterWindow(QMainWindow):
             f"Convert {selected} {unit}" if has_profile and has_files else "Convert"
         )
         self.convert_button.setIcon(self._convert_icon if has_profile and has_files else QIcon())
-        self.convert_button.setEnabled(
-            ready and not busy_worker and not self.conversion_dialog.isVisible()
-        )
+        self.convert_button.setEnabled(ready and not busy_worker)
+        # Lock first: disabling a card can move the focus, which then goes to Pause.
+        self._set_cards_locked(running)
+        self._sync_primary_slot(running)
         footer_reason = None
         if self.worker is None:
             if not has_profile:
@@ -1038,12 +1103,8 @@ class ConverterWindow(QMainWindow):
             raise RuntimeError("The options card must include its modified chip.")
         options_chip.setVisible(options_modified)
         self.profile_options.reset_button.setEnabled(options_modified)
-        self.conversion_dialog.set_running(self.worker is not None)
-        self.last_run_button.setEnabled(has_logs)
-        self.pause_button.setText("Resume" if self._run_state is RunState.PAUSED else "Pause")
-        self.pause_button.setEnabled(
-            self._run_state in (RunState.RUNNING, RunState.PAUSED) and not self._cancelling
-        )
+        self.view_log_button.setEnabled(has_logs)
+        self._sync_pause_button()
         self.clear_button.setEnabled(has_roots)
         check_state = (
             self.instance_tree.check_state()
@@ -1074,8 +1135,6 @@ class ConverterWindow(QMainWindow):
             if scanning
             else ""
             if not ready or paused or running
-            else "Close the conversion dialog before starting another run."
-            if self.conversion_dialog.isVisible()
             else "Start conversion (Ctrl+Enter)."
         )
         self.save_logs_button.setEnabled(has_logs and self.worker is None)
@@ -1122,27 +1181,70 @@ class ConverterWindow(QMainWindow):
         self.log.append_entry(entry)
         # Only the log-driven controls change here; the rest is updated at lifecycle points.
         self.save_logs_button.setEnabled(self.worker is None)
-        self.last_run_button.setEnabled(True)
+        self.view_log_button.setEnabled(True)
 
-    def _show_conversion_dialog(self) -> None:
-        self.conversion_dialog.open()
-        if self._last_status is not None and not self.status_pill.isHidden():
-            self._render_run_status(*self._last_status)
-        self._update_buttons()
+    def _show_log_window(self) -> None:
+        """Open the log window, or bring the open one to the front (never a second one)."""
+        self.log_window.show_and_raise()
+
+    def _sync_primary_slot(self, running: bool) -> None:
+        """Convert, or Pause / Cancel in its place while a run is active."""
+        target = self.run_controls if running else self.convert_button
+        if self.primary_slot.currentWidget() is target:
+            return
+        focus = self.focusWidget()  # also while the window is not active
+        had_focus = focus is not None and (
+            focus is self.primary_slot or self.primary_slot.isAncestorOf(focus)
+        )
+        self._sync_pause_button()  # enabled before it takes the focus
+        self.primary_slot.setCurrentWidget(target)
+        if running:
+            # Convert disappears: focus must not get lost.
+            self.pause_button.setFocus(Qt.FocusReason.OtherFocusReason)
+        elif had_focus:
+            following = (
+                self.view_log_button
+                if self.view_log_button.isVisibleTo(self) and self.view_log_button.isEnabled()
+                else self.convert_button
+            )
+            following.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _sync_pause_button(self) -> None:
+        paused = self._run_state is RunState.PAUSED
+        self.pause_button.setText("Resume" if paused else "Pause")
+        self.pause_button.setIcon(self._resume_icon if paused else self._pause_icon)
+        if self.pause_button.property("runPrimary") != paused:
+            self.pause_button.setProperty("runPrimary", paused)
+            self.pause_button.style().unpolish(self.pause_button)
+            self.pause_button.style().polish(self.pause_button)
+        self.pause_button.setEnabled(
+            self._run_state in (RunState.RUNNING, RunState.PAUSED) and not self._cancelling
+        )
+
+    def _set_cards_locked(self, locked: bool) -> None:
+        """Cards 1-4 stay visible but cannot be changed while a run is active."""
+        if locked == self._cards_locked:
+            return
+        self._cards_locked = locked
+        for card in (
+            self.files_group,
+            self.conversion_group,
+            self.profile_options,
+            self.destination_group,
+        ):
+            card.setEnabled(not locked)
+        for target in (self.files, self.instance_tree, self.drop_zone):
+            target.setAcceptDrops(not locked)
 
     def _set_output_available(self, available: bool) -> None:
         self.open_output_button.setEnabled(available)
-        self.conversion_dialog.open_output_button.setEnabled(available)
 
     def _set_status(self, text: str, state: str = "", *, terminal: bool = False) -> None:
-        if state == "error" and self.conversion_dialog.isVisible():
-            QMessageBox.warning(self.conversion_dialog, "Error", text)
         self.status_pill.set_state(
             StatusState.NOTICE,
             done=0,
             total=0,
             elapsed=0,
-            dialog_open=False,
             detail=text,
             notice_tone=state,
         )
@@ -1161,6 +1263,7 @@ class ConverterWindow(QMainWindow):
             if state in (StatusState.RUNNING, StatusState.PAUSED)
             else outcome.converted
         )
+        current = self.converter.current_input
         self.status_pill.set_state(
             state,
             done=done,
@@ -1169,18 +1272,50 @@ class ConverterWindow(QMainWindow):
             skipped=outcome.skipped,
             failed=outcome.failed,
             converted=outcome.converted,
-            dialog_open=self.conversion_dialog.isVisible(),
             detail=detail,
+            current_file=str(current) if current is not None else "",
+            cancelling=self._cancelling,
+            pausing=self._run_state is RunState.PAUSING,
         )
-        self.conversion_dialog.set_run_status(
-            state,
-            self.status_pill.label.text(),
-            detail,
-            converted=outcome.converted,
-            total=outcome.total,
-            failed_files=outcome.failed_files,
+        self._render_log_window(
+            state, pausing=self._run_state is RunState.PAUSING, cancelling=self._cancelling
         )
         self.status_zone.setCurrentWidget(self.status_pill)
+
+    def _render_log_window(
+        self, state: StatusState, *, pausing: bool = False, cancelling: bool = False
+    ) -> None:
+        """The log window's chip and summary follow the footer (same wording, same moments)."""
+        outcome = self.converter.outcome
+        chip_text, chip_icon = chip_content(
+            state,
+            skipped=outcome.skipped,
+            failed=outcome.failed,
+            pausing=pausing,
+            cancelling=cancelling,
+        )
+        if state in ACTIVE_STATES:
+            summary = [
+                (str(self.converter.progress_done), True),
+                (" / ", False),
+                (str(outcome.total), True),
+                (" · ", False),
+                (format_elapsed(outcome.elapsed), True),
+                (" elapsed", False),
+            ]
+        else:
+            summary = result_segments(
+                state,
+                converted=outcome.converted,
+                total=outcome.total,
+                elapsed=outcome.elapsed,
+                skipped=outcome.skipped,
+                failed=outcome.failed,
+            )
+            finished_at = self.converter.finished_at
+            if finished_at is not None:
+                summary += [(" · finished ", False), (finished_at.strftime("%H:%M:%S"), True)]
+        self.log_window.set_run_status(chip_text, chip_icon, state_tone(state), summary)
 
     def _dismiss_status(self) -> None:
         if self.status_pill.state is StatusState.NOTICE and self._last_status is not None:
@@ -1203,11 +1338,6 @@ class ConverterWindow(QMainWindow):
         self.history_button.setVisible(self._last_run_available)
         self.history_button.setEnabled(self._last_run_available)
         self.status_zone.setCurrentWidget(self.summary_zone)
-
-    def _dialog_finished(self) -> None:
-        if self._last_status is not None and self.status_pill.state is not StatusState.NOTICE:
-            self._render_run_status(*self._last_status)
-        self._update_buttons()
 
     def _save_logs(self) -> None:
         if not self._log_entries:
@@ -1285,7 +1415,7 @@ class ConverterWindow(QMainWindow):
         return True
 
     def _start_conversion(self) -> None:
-        if self.conversion.currentData() is None:
+        if self.conversion.currentData() is None or self.worker is not None:
             return
         input_paths = self._selected_input_paths()
         if not input_paths:
@@ -1411,6 +1541,7 @@ class ConverterWindow(QMainWindow):
                 event.ignore()
                 return
             self.converter.force_stop()
+        self.log_window.close()
         self._save_active_profile_preferences()
         self.store.set_geometry(self.saveGeometry())
         self._stop_scan()

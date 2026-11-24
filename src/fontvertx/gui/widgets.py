@@ -38,6 +38,7 @@ from PySide6.QtGui import (
     QStandardItem,
     QStandardItemModel,
     QValidator,
+    QWheelEvent,
 )
 from PySide6.QtWidgets import (
     QAbstractScrollArea,
@@ -478,6 +479,8 @@ class ElidedLabel(QLabel):
     An explicit tooltip (``setToolTip``), such as an error detail, always takes precedence.
     """
 
+    elide_mode = Qt.TextElideMode.ElideRight
+
     def tooltip_text(self) -> str:
         """The tooltip a hover would show now: the explicit one, else the text if elided."""
         if self.toolTip():
@@ -499,7 +502,7 @@ class ElidedLabel(QLabel):
 
     def display_text(self) -> str:
         return self.fontMetrics().elidedText(
-            self.text(), Qt.TextElideMode.ElideRight, self.contentsRect().width()
+            self.text(), self.elide_mode, self.contentsRect().width()
         )
 
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -1179,3 +1182,16 @@ class FileTable(QTableView):
             event.acceptProposedAction()
         else:
             event.ignore()
+
+
+def scroll_with_wheel(view: QAbstractScrollArea, event: QWheelEvent) -> None:
+    """Scroll ``view`` by a wheel event even while it is disabled (it ignores the wheel)."""
+    pixels = event.pixelDelta()
+    angle = event.angleDelta()
+    for bar, pixel, eighths in (
+        (view.verticalScrollBar(), pixels.y(), angle.y()),
+        (view.horizontalScrollBar(), pixels.x(), angle.x()),
+    ):
+        delta = pixel or round(eighths / 120 * QApplication.wheelScrollLines() * bar.singleStep())
+        if delta:
+            bar.setValue(bar.value() - delta)
