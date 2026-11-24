@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Fontvertx</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3D6DBB"/>
+      <stop offset="1" stop-color="#264A86"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#bg)"/>
+  <g fill="none" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M66 196 L128 136 L190 196" stroke="#BFD3F2"/>
+    <path d="M66 60 L128 120 L190 60" stroke="#FFFFFF"/>
+  </g>
+</svg>

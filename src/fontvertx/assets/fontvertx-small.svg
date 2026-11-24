@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Fontvertx (small sizes)</title>
+  <rect width="256" height="256" rx="58" fill="#2F5DA8"/>
+  <g fill="none" stroke-width="42" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M62 196 L128 132 L194 196" stroke="#BFD3F2"/>
+    <path d="M62 60 L128 124 L194 60" stroke="#FFFFFF"/>
+  </g>
+</svg>

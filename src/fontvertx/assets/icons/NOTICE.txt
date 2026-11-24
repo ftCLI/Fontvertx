@@ -1,0 +1,16 @@
+The SVG icons in this folder are Material Symbols by Google, licensed under the
+Apache License, Version 2.0 (full text in LICENSE-Apache-2.0.txt,
+also at https://www.apache.org/licenses/LICENSE-2.0).
+
+Style: Outlined, weight 400, grade 0, fill 0, optical size 20. The files are
+unmodified copies of <name>_20px.svg from
+https://github.com/google/material-design-icons/tree/master/symbols/web
+
+add, arrow_back, arrow_downward, arrow_forward, arrow_upward, cancel, check,
+check_circle, chevron_right, close, error, expand_less,
+expand_more, history, pause_circle, priority_high, progress_activity, remove,
+sync_alt, tune, unfold_less, unfold_more, warning
+
+Exception: check_wght600.svg is check_wght600_20px.svg from the same set
+(Outlined, weight 600, grade 0, fill 0, optical size 20), used for the
+completed-step badge, where the weight-400 stroke is too thin at 14px.
