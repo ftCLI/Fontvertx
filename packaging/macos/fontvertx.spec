@@ -116,5 +116,9 @@ app = BUNDLE(
         "LSMinimumSystemVersion": "14.4",
         "NSHighResolutionCapable": True,
         "LSApplicationCategoryType": "public.app-category.graphics-design",
+        # The console CLI in the same bundle makes PyInstaller set LSBackgroundOnly,
+        # which hides the app from the Dock and Cmd+Tab: keep it a regular app.
+        "LSBackgroundOnly": False,
+        "LSUIElement": False,
     },
 )
