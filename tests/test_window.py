@@ -226,6 +226,75 @@ def test_sidebar_scrollbar_overlays_content_and_never_reserves_space(
     assert win.sidebar_overflow_fade.geometry().bottom() == scroll.viewport().height() - 1
 
 
+def _settle(qapp: QApplication) -> None:
+    for _ in range(8):
+        qapp.processEvents()
+
+
+def test_stacked_page_shows_overflow_fade_above_the_footer(
+    win: ConverterWindow, qapp: QApplication
+) -> None:
+    win.setStyleSheet(stylesheet())
+    win.setMinimumSize(MIN_SIZE)
+    win.conversion.setCurrentIndex(win.conversion.findData("ttf2otf"))
+    win.resize(MIN_WIDTH, MIN_SIZE.height())
+    win.show()
+    _settle(qapp)
+    scroll = win.content_scroll
+    bar = scroll.verticalScrollBar()
+    fade = win.content_overflow_fade
+    assert win.body_layout.direction() == window_module.QBoxLayout.Direction.TopToBottom
+    assert bar.maximum() > 0
+    # Same look and behaviour as the right column's fade.
+    assert type(fade) is type(win.sidebar_overflow_fade)
+    assert not fade.isHidden()
+    assert fade.parentWidget() is scroll.viewport()
+    assert fade.height() == 16 and fade.width() == scroll.viewport().width()
+    assert fade.geometry().bottom() == scroll.viewport().height() - 1
+    assert fade.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    # Above the cards (last child of the viewport), and the footer lies outside the area.
+    assert scroll.viewport().children()[-1] is fade
+    assert not scroll.isAncestorOf(win.footer)
+    fade_bottom = fade.mapTo(win, QPoint(0, fade.height())).y()
+    assert fade_bottom <= win.footer.mapTo(win, QPoint()).y()
+    # Painted in the page colour, from transparent at the top to opaque at the bottom.
+    image = fade.grab().toImage()
+    assert image.pixelColor(fade.width() // 2, fade.height() - 1).name() == LIGHT.page
+
+    bar.setValue(bar.maximum())
+    _settle(qapp)
+    assert fade.isHidden()
+    bar.setValue(0)
+    _settle(qapp)
+    assert not fade.isHidden()
+
+    # Wheel events reach the page through the fade.
+    center = fade.mapTo(scroll.viewport(), fade.rect().center())
+    assert scroll.viewport().childAt(center) is not fade
+
+    # Tall enough that nothing scrolls: hidden.
+    win.resize(MIN_WIDTH, 3000)
+    _settle(qapp)
+    assert bar.maximum() == 0
+    assert fade.isHidden()
+
+
+def test_side_by_side_page_keeps_content_fade_hidden(
+    win: ConverterWindow, qapp: QApplication
+) -> None:
+    win.setStyleSheet(stylesheet())
+    win.resize(1200, 1100)
+    win.show()
+    win.conversion.setCurrentIndex(win.conversion.findData("ft2wf"))
+    _settle(qapp)
+    assert win.body_layout.direction() == window_module.QBoxLayout.Direction.LeftToRight
+    assert win.content_scroll.verticalScrollBar().maximum() == 0
+    assert win.content_overflow_fade.isHidden()
+    # The right column's fade still follows its own scroll area only.
+    assert win.sidebar_overflow_fade.parentWidget() is win.sidebar_scroll.viewport()
+    assert win.sidebar_overflow_fade.isHidden()
+
+
 def _scan(win: ConverterWindow, paths: list[Path], wait: Wait) -> None:
     win._add_paths([str(p) for p in paths])
     wait(lambda: not win.file_list.scanning, 30.0)
