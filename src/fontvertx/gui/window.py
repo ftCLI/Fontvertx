@@ -379,6 +379,9 @@ class ConverterWindow(QMainWindow):
         self.content_scroll.setWidgetResizable(True)
         self.content_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self.content_scroll.setWidget(page)
+        # Like the right column's fade: with stacked cards the whole page scrolls, and
+        # the cards would otherwise be cut sharply at the footer's top edge.
+        self.content_overflow_fade = ScrollOverflowFade(self.content_scroll)
         self.content_scroll.viewport().installEventFilter(self)
         # While a run locks the cards, the font lists still scroll with the wheel.
         self.files.viewport().installEventFilter(self)
