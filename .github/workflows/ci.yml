@@ -58,4 +58,10 @@ jobs:
           sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
       - run: uv sync --no-default-groups --group test --python ${{ matrix.python-version }}
       - name: Run tests
-        run: uv run --no-default-groups --group test --python ${{ matrix.python-version }} pytest --cov-branch
+        # -v names each test before it runs, so a crash shows where it happened.
+        # --capture=sys captures only Python's sys.stdout/stderr: messages written by
+        # Qt or the C library straight to the process's stderr (e.g. before an abort)
+        # reach the job log instead of being lost with pytest's captured output.
+        run: >-
+          uv run --no-default-groups --group test --python ${{ matrix.python-version }}
+          pytest --cov-branch -v --capture=sys

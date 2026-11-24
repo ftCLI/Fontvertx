@@ -184,7 +184,9 @@ def test_example_path_visible_ink_is_centered(
             )
         ]
         assert ink_rows
-        assert abs(ink_rows[0] - (image.height() - 1 - ink_rows[-1])) <= 1
+        # Centered within 2px: where the glyphs' ink sits in their line box depends on
+        # each system's font rasterizer (1px on Windows, 2px on macOS).
+        assert abs(ink_rows[0] - (image.height() - 1 - ink_rows[-1])) <= 2
         label.close()
     finally:
         set_mono_family(original_family)

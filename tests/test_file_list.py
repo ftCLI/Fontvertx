@@ -286,7 +286,18 @@ def test_format_and_outline_badges_use_token_colors(file_list: FontFileList) -> 
             if (color := image.pixelColor(x, y)).alpha() == 255 and color.name() != row_background
         )
         assert colors.most_common(1)[0][0] == LIGHT.accent_tint, column
-        assert LIGHT.accent in colors, column
+        # The accent text is antialiased: its darkest pixels are close to the accent,
+        # not necessarily equal to it (FreeType renders no exact match).
+        accent = QColor(LIGHT.accent)
+        assert any(
+            max(
+                abs(color.red() - accent.red()),
+                abs(color.green() - accent.green()),
+                abs(color.blue() - accent.blue()),
+            )
+            <= 16
+            for color in map(QColor, colors)
+        ), column
 
 
 def test_proxy_sorts_upm_numerically(qapp: QApplication) -> None:
