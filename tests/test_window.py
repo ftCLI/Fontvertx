@@ -2055,8 +2055,7 @@ def test_footer_swaps_convert_for_pause_and_cancel_during_a_run(
         assert not card.isHidden()
     assert win.content_scroll.isEnabled() and win.sidebar_scroll.isEnabled()
     assert not win.files.acceptDrops() and not win.drop_zone.acceptDrops()
-    # The run's state: View log stays reachable as an icon, the output folder is not shown.
-    assert win.status_pill.compact
+    # View log stays reachable during the run; the output folder is not shown.
     assert not win.view_log_button.isHidden() and win.open_output_button.isHidden()
     win._run_state = RunState.PAUSED
     win._set_run_status(StatusState.PAUSED)
@@ -2179,8 +2178,8 @@ def test_view_log_opens_one_non_modal_window_and_raises_it(
     win._run_state = RunState.RUNNING
     win._set_run_status(StatusState.RUNNING)
     win._update_buttons()
-    # During the run, View log is an icon beside the progress.
-    assert win.view_log_button.isEnabled() and win.view_log_button.text() == ""
+    # During the run, View log stays reachable beside the progress.
+    assert win.view_log_button.isEnabled() and not win.view_log_button.isHidden()
     assert win.view_log_button.accessibleName() == "View log"
     win.view_log_button.click()
     window = win.log_window
@@ -2282,6 +2281,112 @@ def test_narrow_footer_keeps_run_buttons_whole(
     assert "…" in pill.run_file.display_text()
     assert pill.run_file.display_text().endswith("font.ttf")  # elided in the middle
     _assert_footer_aligned(win)
+    win.worker = None
+
+
+def _run_with_logs(win: ConverterWindow, width: int) -> None:
+    """A wide or narrow window with a run in progress (View log enabled)."""
+    win.setMinimumSize(MIN_SIZE)
+    win.resize(width, 600)
+    win.show()
+    win._append_log(LogEntry.create("INFO", "conversion.started", "Started", {}))
+    win.converter.outcome.total = 4
+    win.worker = _fake_worker(win)
+    win._run_state = RunState.RUNNING
+    win._set_run_status(StatusState.RUNNING)
+    win._update_buttons()
+    for _ in range(3):
+        QApplication.processEvents()
+
+
+def _labelled(win: ConverterWindow) -> bool:
+    return win.view_log_button.text() == "View log" and not win.status_pill.compact
+
+
+def _icon_only(win: ConverterWindow) -> bool:
+    return win.status_pill.compact and all(
+        button.text() == "" and button.size() == QSize(38, 38)
+        for button in (win.view_log_button, win.open_output_button)
+    )
+
+
+def _cards_side_by_side(win: ConverterWindow) -> bool:
+    return win.body_layout.direction() == window_module.QBoxLayout.Direction.LeftToRight
+
+
+@pytest.mark.parametrize("width", [layout_manager.BODY_BREAKPOINT, 1200])
+def test_result_buttons_labelled_with_cards_side_by_side(win: ConverterWindow, width: int) -> None:
+    _run_with_logs(win, width)
+    assert _cards_side_by_side(win)
+    assert _labelled(win)  # during the run
+    win._run_state = RunState.PAUSED
+    win._set_run_status(StatusState.PAUSED)
+    assert _labelled(win)
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    win._set_output_available(True)
+    for _ in range(3):
+        QApplication.processEvents()
+    assert _labelled(win)  # after it
+    assert win.open_output_button.text() == "Open output folder"
+    win.worker = None
+
+
+@pytest.mark.parametrize("width", [MIN_WIDTH, layout_manager.BODY_BREAKPOINT - 1])
+def test_result_buttons_icon_only_with_stacked_cards(win: ConverterWindow, width: int) -> None:
+    _run_with_logs(win, width)
+    assert not _cards_side_by_side(win)
+    assert _icon_only(win)  # during the run
+    assert win.view_log_button.accessibleName() == win.view_log_button.toolTip() == "View log"
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    win._set_output_available(True)
+    for _ in range(3):
+        QApplication.processEvents()
+    assert _icon_only(win)  # after it
+    assert win.open_output_button.accessibleName() == "Open output folder"
+    win.worker = None
+
+
+def test_resizing_across_the_breakpoint_switches_cards_and_buttons_together(
+    win: ConverterWindow,
+) -> None:
+    wide, narrow = 1200, layout_manager.BODY_BREAKPOINT - 1
+
+    def resize(width: int) -> None:
+        win.resize(width, 600)
+        for _ in range(3):
+            QApplication.processEvents()
+
+    _run_with_logs(win, wide)
+    assert _cards_side_by_side(win) and _labelled(win)
+    resize(narrow)
+    assert not _cards_side_by_side(win) and _icon_only(win)
+    resize(wide)
+    assert _cards_side_by_side(win) and _labelled(win)
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    win._set_output_available(True)
+    resize(narrow)
+    assert not _cards_side_by_side(win) and _icon_only(win)
+    resize(wide)
+    assert _cards_side_by_side(win) and _labelled(win)
+    win.worker = None
+
+
+@pytest.mark.parametrize("width", [MIN_WIDTH, 1200])
+def test_state_changes_keep_the_button_mode(win: ConverterWindow, width: int) -> None:
+    _run_with_logs(win, width)
+    compact = win.status_pill.compact
+    for state, run_state in (
+        (StatusState.PAUSED, RunState.PAUSED),
+        (StatusState.RUNNING, RunState.RUNNING),
+    ):
+        win._run_state = run_state
+        win._set_run_status(state)
+        assert win.status_pill.compact is compact
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    assert win.status_pill.compact is compact
+    win._set_status("Logs saved.")
+    win._dismiss_status()
+    assert win.status_pill.compact is compact
     win.worker = None
 
 

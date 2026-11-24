@@ -383,7 +383,7 @@ While a run is in progress, the footer shows **Converting…**, the count of pro
 |---|---|
 | **Pause** / **Resume** | Pauses after the font being converted: until it is done, the footer shows **Pausing…** and *Pauses when the current font is done.* (hover over that line to see the font's path). Resume continues with the next one. While paused, the footer shows **Paused** and Resume is the highlighted button. |
 | **Cancel** | Stops the conversion after the font being converted: until then, the footer shows **Cancelling…** and *Stops when the current font is done.* A paused run stops at once. Files already converted are kept. |
-| **View log** (eye icon) | Opens the log window (§8.3), which updates live during the run. |
+| **View log** | Opens the log window (§8.3), which updates live during the run. When the cards are stacked (narrow window), it becomes an icon button (an eye). |
 
 During the run the cards are dimmed and cannot be changed, and fonts cannot be dropped onto the window; you can still scroll the font list to look through it. Everything becomes available again when the run ends.
 
@@ -399,7 +399,7 @@ When the run ends, the footer shows a colored chip with the outcome, the counts 
 - **Cancelled** — *n* of *total* converted · *time*
 - **Error** (red) — conversion stopped · *n* converted · *time*
 
-On the right: **View log** (highlighted in red when some fonts failed), **Open output folder** and **Convert**, ready for another run. In a narrow window, View log and Open output folder are shown as round icon buttons; hover over them for their names.
+On the right: **View log** (highlighted in red when some fonts failed), **Open output folder** and **Convert**, ready for another run. When the cards are stacked (narrow window), View log and Open output folder become icon buttons; hover over them for their names.
 
 ### 8.3 The log window
 

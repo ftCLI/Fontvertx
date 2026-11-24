@@ -4,8 +4,8 @@
 
 - The conversion now runs in the footer of the main window: progress, the file being
   converted, and Pause / Resume and Cancel in place of Convert. Afterwards the footer shows
-  the outcome with View log, Open output folder and Convert. In a narrow window, View log and
-  Open output folder become icon buttons.
+  the outcome with View log, Open output folder and Convert. When the cards are stacked
+  (narrow window), View log and Open output folder become icon buttons.
 - The log of the last run opens in a separate, non-modal window (View log), which updates
   live during a run. The modal Conversion window is gone.
 - During a run the cards stay visible but cannot be changed, and dropping fonts is disabled;

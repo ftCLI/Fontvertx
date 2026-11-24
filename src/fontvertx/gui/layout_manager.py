@@ -65,6 +65,9 @@ class LayoutManager:
         if w.body_layout.direction() != direction:
             w.body_layout.setDirection(direction)
         horizontal = direction == QBoxLayout.Direction.LeftToRight
+        # One source of truth: the footer's result buttons are icon-only exactly while
+        # the cards are stacked, during a run and after it.
+        w.status_pill.set_compact(not horizontal)
         w.body_layout.setStretch(0, 1)
         w.body_layout.setStretch(1, 0)
         w.sidebar_scroll.setSizePolicy(

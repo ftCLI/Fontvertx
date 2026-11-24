@@ -19,7 +19,6 @@ from PySide6.QtGui import (
     QPainterPath,
     QPaintEvent,
     QPixmap,
-    QResizeEvent,
 )
 from PySide6.QtWidgets import (
     QFrame,
@@ -522,13 +521,6 @@ class StatusPill(QWidget):
             button.setToolTip(button.text())
         self._full_text = {self.log_button: "View log", self.output_button: "Open output folder"}
         self._icon_names = {self.log_button: "visibility", self.output_button: "folder_open"}
-        # Measures the labelled buttons while they show only their icon.
-        self._measure = KeyboardPushButton(self)
-        self._measure.setProperty("resultAction", True)
-        self._measure.setProperty("iconOnly", False)
-        self._measure.setIconSize(QSize(ACTION_ICON_SIZE, ACTION_ICON_SIZE))
-        self._measure.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._measure.hide()
         self.close_button = KeyboardPushButton()
         self.close_button.setProperty("pillClose", True)
         self.close_button.setFixedSize(28, 28)
@@ -668,7 +660,6 @@ class StatusPill(QWidget):
             widget.style().polish(widget)
         self._sync_action_icons(tone)
         self.tone = tone
-        self._sync_compact()
         self.toneChanged.emit(tone)
         self.update()
         self.show()
@@ -696,24 +687,14 @@ class StatusPill(QWidget):
                 color = LIGHT.slate
             button.setIcon(self._action_icon(name, color))
 
-    def full_buttons_width(self) -> int:
-        """Width of View log + Open output folder with their labels."""
-        self._measure.ensurePolished()
-        total = 0
-        for button, text in self._full_text.items():
-            self._measure.setIcon(button.icon())
-            self._measure.setText(text)
-            total += self._measure.sizeHint().width()
-        return total + self.result_buttons_layout.spacing()
+    def set_compact(self, compact: bool) -> None:
+        """Icon-only (round) or labelled View log / Open output folder.
 
-    def _required_width(self) -> int:
-        spacing = self.pill_layout.spacing()
-        return (
-            self.chip.sizeHint().width()
-            + self.counts.natural_width()
-            + self.full_buttons_width()
-            + 2 * spacing
-        )
+        Decided by the window's body layout (``LayoutManager.update_body``): icon-only
+        while the cards are stacked. State changes never change it.
+        """
+        if compact != self.compact:
+            self._set_compact(compact)
 
     def _set_compact(self, compact: bool) -> None:
         for button, text in self._full_text.items():
@@ -729,27 +710,8 @@ class StatusPill(QWidget):
                 button.setMaximumWidth(16777215)
             button.updateGeometry()
         self.compact = compact
-        # Lay the buttons out again now: this often runs inside the pill's own resize.
+        # Lay the buttons out again now: this runs during a window resize.
         self.result_buttons_layout.invalidate()
         self.result_buttons.updateGeometry()
         self.pill_layout.invalidate()
         self.pill_layout.activate()
-
-    def _sync_compact(self) -> None:
-        if self.state in ACTIVE_STATES:
-            compact = True  # only View log is shown, as an icon
-        elif self.state is None or self.state is StatusState.NOTICE:
-            compact = False
-        else:
-            compact = self.contentsRect().width() < self._required_width()
-        if compact != self.compact:
-            self._set_compact(compact)
-
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        super().resizeEvent(event)
-        self._sync_compact()
-
-    def changeEvent(self, event: QEvent) -> None:
-        super().changeEvent(event)
-        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
-            self._sync_compact()
