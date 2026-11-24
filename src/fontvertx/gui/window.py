@@ -279,7 +279,9 @@ class ConverterWindow(QMainWindow):
             shortcut.activated.connect(self.convert_button.click)
         self.convert_button.setEnabled(False)
         # While a run is active, Pause / Resume and Cancel take Convert's place (same
-        # slot, same width).
+        # slot, same width). Unlike View log / Open output folder, these three always keep
+        # their labels: the slot's width is fixed, so icons would free no space, and an
+        # icon-only Cancel (an X) would read as a dismiss button.
         self.pause_button = KeyboardPushButton("Pause")
         self.pause_button.setToolTip(
             wrap_tip("Pause after the font being converted; Resume continues with the next one.")

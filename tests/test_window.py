@@ -2371,6 +2371,42 @@ def test_resizing_across_the_breakpoint_switches_cards_and_buttons_together(
     win.worker = None
 
 
+@pytest.mark.parametrize(
+    "width", [MIN_WIDTH, layout_manager.BODY_BREAKPOINT - 1, layout_manager.BODY_BREAKPOINT, 1200]
+)
+def test_convert_pause_and_cancel_always_keep_their_labels(
+    win: ConverterWindow, tmp_path: Path, width: int
+) -> None:
+    _ready(win, tmp_path)
+    win.setMinimumSize(MIN_SIZE)
+    win.resize(width, 600)
+    win.show()
+    for _ in range(3):
+        QApplication.processEvents()
+    slot_width = win.primary_slot.width()
+    assert win.convert_button.text() == "Convert 1 font"
+    win.worker = _fake_worker(win)
+    for state, run_state in (
+        (StatusState.RUNNING, RunState.RUNNING),
+        (StatusState.PAUSED, RunState.PAUSED),
+        (StatusState.RUNNING, RunState.RUNNING),
+    ):
+        win._run_state = run_state
+        win._set_run_status(state)
+        win._update_buttons()
+        QApplication.processEvents()
+        assert win.pause_button.text() == ("Resume" if run_state is RunState.PAUSED else "Pause")
+        assert win.cancel_button.text() == "Cancel"
+        assert win.primary_slot.width() == slot_width
+    _finished(win, ConversionResult((_outcome(FontOutcomeKind.CONVERTED),)))
+    win.worker = None
+    win._run_state = RunState.IDLE
+    win._update_buttons()
+    QApplication.processEvents()
+    assert win.convert_button.text() == "Convert 1 font"
+    assert win.primary_slot.width() == slot_width
+
+
 @pytest.mark.parametrize("width", [MIN_WIDTH, 1200])
 def test_state_changes_keep_the_button_mode(win: ConverterWindow, width: int) -> None:
     _run_with_logs(win, width)
