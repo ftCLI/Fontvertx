@@ -24,6 +24,7 @@ BODY_BREAKPOINT = 1055  # min window width for the horizontal body layout
 CARD_MARGIN_H = CARD_PADDING
 CONTENT_MARGIN = 2 * CARD_MARGIN_H + 2  # card margins + card border around the input controls
 MIN_SIDEBAR_HEIGHT = 200
+QWIDGETSIZE_MAX = (1 << 24) - 1  # Qt's default maximum widget size
 SIDEBAR_SLACK = 2 * PAGE_MARGIN_H  # page side margins around the body
 OPTIONS_ROW_SLACK = 70
 # Checkbox text wrapping: indicator 16 + spacing 8 + padding 2x2 + focus border 2x2 = 32,
@@ -51,6 +52,7 @@ class LayoutManager:
     def __init__(self, window) -> None:
         self.w = window
         self._convert_width_key: tuple[str, float] | None = None
+        self._sidebar_stacked: bool | None = None
 
     def sync_footer_margins(self) -> None:
         self.update_body()
@@ -94,12 +96,37 @@ class LayoutManager:
         if w.content_scroll.verticalScrollBar().isVisible():
             available -= w.content_scroll.verticalScrollBar().width()
         self.update_input(available - CONTENT_MARGIN)
-        w.sidebar_scroll.setMinimumHeight(
-            MIN_SIDEBAR_HEIGHT
-            if horizontal or sidebar is None
-            else max(MIN_SIDEBAR_HEIGHT, sidebar.sizeHint().height())
-        )
+        self.set_sidebar_stacked(not horizontal)
         self.update_footer()
+
+    def set_sidebar_stacked(self, stacked: bool) -> None:
+        """Side by side, the sidebar scrolls by itself with its overlay bar and fade.
+        Stacked, it is exactly as tall as its content and only the page scrolls."""
+        w = self.w
+        if stacked != self._sidebar_stacked:
+            self._sidebar_stacked = stacked
+            w.sidebar_scrollbar.set_suspended(stacked)
+            w.sidebar_overflow_fade.set_suspended(stacked)
+            if not stacked:
+                w.sidebar_scroll.setMinimumHeight(MIN_SIDEBAR_HEIGHT)
+                w.sidebar_scroll.setMaximumHeight(QWIDGETSIZE_MAX)
+        self.sync_stacked_sidebar_height()
+
+    def sync_stacked_sidebar_height(self) -> None:
+        """In the stacked layout, fix the sidebar's height to its content's height at
+        its current width (wrapped text included). Called again whenever the content
+        changes or the sidebar is resized."""
+        w = self.w
+        sidebar = w.sidebar_scroll.widget()
+        if not self._sidebar_stacked or sidebar is None:
+            return
+        # The scroll area never makes its widget narrower than its minimum size hint.
+        width = max(w.sidebar_scroll.viewport().width(), sidebar.minimumSizeHint().width())
+        height = sidebar.heightForWidth(width) if sidebar.hasHeightForWidth() else -1
+        if height < 0:
+            height = sidebar.sizeHint().height()
+        height = max(height, sidebar.minimumSizeHint().height())
+        w.sidebar_scroll.setFixedHeight(height + 2 * w.sidebar_scroll.frameWidth())
 
     def sidebar_width(self) -> int:
         """Width of the sidebar cards in the horizontal layout."""

@@ -91,6 +91,7 @@ class ScrollOverflowFade(QWidget):
     def __init__(self, area: QScrollArea) -> None:
         super().__init__(area.viewport())
         self._area = area
+        self._suspended = False
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         area.viewport().installEventFilter(self)
@@ -98,7 +99,15 @@ class ScrollOverflowFade(QWidget):
         area.verticalScrollBar().rangeChanged.connect(self._sync)
         self._sync()
 
+    def set_suspended(self, suspended: bool) -> None:
+        """Keep the fade hidden, whatever the scroll range, while ``suspended``."""
+        self._suspended = suspended
+        self._sync()
+
     def _sync(self, *_: int) -> None:
+        if self._suspended:
+            self.hide()
+            return
         viewport = self._area.viewport()
         self.setGeometry(0, max(0, viewport.height() - 16), viewport.width(), 16)
         scrollbar = self._area.verticalScrollBar()
@@ -138,6 +147,7 @@ class OverlayScrollBar(QScrollBar):
         self._viewport: QWidget | None = area.viewport()
         self._native = area.verticalScrollBar()
         self._hovered = False
+        self._suspended = False
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(self.HIDE_DELAY_MS)
@@ -208,8 +218,17 @@ class OverlayScrollBar(QScrollBar):
         self.setGeometry(frame.right() + 1, frame.top(), self.sizeHint().width(), frame.height())
         self.raise_()
 
+    def set_suspended(self, suspended: bool) -> None:
+        """Keep the bar hidden, whatever the scroll range, while ``suspended``."""
+        self._suspended = suspended
+        if suspended:
+            self._timer.stop()
+            self.hide()
+        else:
+            self._update_visibility()
+
     def _reveal(self) -> None:
-        if self.maximum() > 0:
+        if not self._suspended and self.maximum() > 0:
             self._place()
             self.show()
             self._timer.start()
@@ -218,7 +237,7 @@ class OverlayScrollBar(QScrollBar):
         if self._live_area() is None:
             return
         keep = self._hovered or self.isSliderDown()
-        if self.maximum() <= 0 or (not keep and not self._timer.isActive()):
+        if self._suspended or self.maximum() <= 0 or (not keep and not self._timer.isActive()):
             self.hide()
         elif keep:
             self._reveal()

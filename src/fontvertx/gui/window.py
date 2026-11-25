@@ -247,6 +247,7 @@ class ConverterWindow(QMainWindow):
         self.sidebar_scroll.setWidgetResizable(True)
         self.sidebar_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self.sidebar_scroll.setWidget(sidebar)
+        sidebar.installEventFilter(self)
         self.sidebar_overflow_fade = ScrollOverflowFade(self.sidebar_scroll)
         self.sidebar_scrollbar = OverlayScrollBar(self.sidebar_scroll)
         self.sidebar_scroll.setMinimumSize(0, 200)
@@ -544,6 +545,20 @@ class ConverterWindow(QMainWindow):
             and event.type() == QEvent.Type.Resize
         ):
             QTimer.singleShot(0, self, self._sync_footer_margins)
+        if (
+            hasattr(self, "sidebar_scroll")
+            and watched is self.sidebar_scroll.widget()
+            and (
+                event.type() == QEvent.Type.LayoutRequest
+                or (
+                    isinstance(event, QResizeEvent)
+                    and event.size().width() != event.oldSize().width()
+                )
+            )
+        ):
+            # Stacked, the sidebar follows its content's height: a profile switch, a
+            # folder chosen or an option toggled never gives it a scrollbar of its own.
+            self._layout.sync_stacked_sidebar_height()
         if (
             getattr(self, "_cards_locked", False)
             and isinstance(event, QWheelEvent)
