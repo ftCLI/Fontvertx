@@ -12,11 +12,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root"
 
-version="$(sed -nE 's/^__version__[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' src/fontvertx/__init__.py)"
-if [[ -z "$version" ]]; then
-    echo "Could not read __version__ from src/fontvertx/__init__.py" >&2
-    exit 1
-fi
+version="$(uv version --short)"
 
 # 1. App icon (.icns) from the PNGs in the package assets.
 assets="src/fontvertx/assets"

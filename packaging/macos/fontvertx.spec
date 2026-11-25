@@ -7,10 +7,10 @@
 # The launch scripts are shared with the Windows build (packaging/windows/).
 # Build with packaging/macos/build.sh from the repository root: it first generates
 # build/macos/fontvertx.icns, which this spec uses as the app icon.
-import re
+import tomllib
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files
+from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metadata
 
 ROOT = Path(SPECPATH).parents[1]
 LAUNCHERS = ROOT / "packaging" / "windows"
@@ -20,14 +20,14 @@ TARGET_ARCH = "arm64"
 if not ICON.is_file():
     raise SystemExit(f"Missing {ICON}: run packaging/macos/build.sh, which generates it.")
 
-_init = (ROOT / "src" / "fontvertx" / "__init__.py").read_text(encoding="utf-8")
-_match = re.search(r'^__version__\s*=\s*"([^"]+)"', _init, re.MULTILINE)
-if _match is None:
-    raise SystemExit("Could not read __version__ from src/fontvertx/__init__.py")
-VERSION = _match.group(1)
+with (ROOT / "pyproject.toml").open("rb") as _f:
+    VERSION = tomllib.load(_f)["project"]["version"]
 
 # Package data: icons, SVG/PNG/ICO assets and the bundled Inter / JetBrains Mono fonts.
 datas = collect_data_files("fontvertx")
+# The package metadata: fontvertx.__version__ comes from importlib.metadata, so the
+# build must run where fontvertx is installed (uv run, as build.sh does).
+datas += copy_metadata("fontvertx")
 binaries = []
 hiddenimports = []
 

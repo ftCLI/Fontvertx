@@ -27,7 +27,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          version="$(sed -nE 's/^__version__[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' src/fontvertx/__init__.py)"
+          version="$(uv version --short)"
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "zip=Fontvertx-$version-windows-x64.zip" >> "$GITHUB_OUTPUT"
@@ -88,7 +88,7 @@ jobs:
       - name: Read version
         id: version
         run: |
-          version="$(sed -nE 's/^__version__[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' src/fontvertx/__init__.py)"
+          version="$(uv version --short)"
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "zip=Fontvertx-$version-macos-arm64.zip" >> "$GITHUB_OUTPUT"

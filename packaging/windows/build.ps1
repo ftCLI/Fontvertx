@@ -21,12 +21,10 @@ try {
     Copy-Item -Path (Join-Path $root "LICENSE") -Destination $distDir -Force
     Copy-Item -Path (Join-Path $root "README.md") -Destination $distDir -Force
 
-    $init = Get-Content -Raw -Path (Join-Path $root "src\fontvertx\__init__.py")
-    $match = [regex]::Match($init, '__version__\s*=\s*"([^"]+)"')
-    if (-not $match.Success) {
-        throw "Could not read __version__ from src/fontvertx/__init__.py"
+    $version = (uv version --short | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $version) {
+        throw "uv version --short failed with exit code $LASTEXITCODE"
     }
-    $version = $match.Groups[1].Value
 
     $zip = Join-Path $root "build\windows\Fontvertx-$version-windows-x64.zip"
     if (Test-Path $zip) {
