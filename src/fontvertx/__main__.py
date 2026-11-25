@@ -7,8 +7,9 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QStyleFactory
 
+from fontvertx.gui.app_style import AppStyle
 from fontvertx.gui.styles import MONO_FONT_FAMILY, UI_FONT_FAMILY, set_mono_family, ui_font
-from fontvertx.gui.tooltips import TooltipTimingStyle, install_tooltip_theme
+from fontvertx.gui.tooltips import install_tooltip_theme
 from fontvertx.gui.window import ConverterWindow
 from fontvertx.logging_setup import setup_logging
 
@@ -79,7 +80,7 @@ def main() -> int:
     _set_windows_app_id()
     app = QApplication(sys.argv)
     # Neutral cross-platform base style; the application stylesheet sits on top.
-    app.setStyle(TooltipTimingStyle(QStyleFactory.create("Fusion")))
+    app.setStyle(AppStyle(QStyleFactory.create("Fusion")))
     app.styleHints().setColorScheme(Qt.ColorScheme.Light)
     app.setOrganizationName("Fontvertx")
     app.setApplicationName("Fontvertx")

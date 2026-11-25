@@ -23,13 +23,13 @@ from PySide6.QtWidgets import QApplication, QLabel, QStyleOptionViewItem, QTreeW
 
 from fontvertx import __main__ as main_module
 from fontvertx.gui import scanner as scanner_module
+from fontvertx.gui.app_style import AppStyle
 from fontvertx.gui.instance_tree import InstanceTree
 from fontvertx.gui.logs import LogEntry
 from fontvertx.gui.organization_dialog import OrganizationDialog
 from fontvertx.gui.profiles import CONVERSION_GROUP_HEADINGS, CONVERSIONS
 from fontvertx.gui.scanner import ScanWorker, Source
 from fontvertx.gui.styles import UI_FONT_FAMILY, mono_family, stylesheet
-from fontvertx.gui.tooltips import TooltipTimingStyle
 from fontvertx.gui.widgets import ConversionSelector, FileTable
 
 
@@ -247,7 +247,7 @@ def test_main_configures_application_and_shows_window(
     ]
     assert calls[2][0] == "style"
     style = calls[2][1]
-    assert isinstance(style, TooltipTimingStyle)
+    assert isinstance(style, AppStyle)
     assert style.baseStyle().name().casefold() == "fusion"
     assert calls[3][1] == main_module.Qt.ColorScheme.Light
     assert isinstance(calls[6][1], QIcon)

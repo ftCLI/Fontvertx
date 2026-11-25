@@ -13,13 +13,14 @@ import re
 from collections.abc import Callable
 
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPalette
-from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle, QToolTip
+from PySide6.QtWidgets import QApplication, QToolTip
 
 from fontvertx.gui.styles import LIGHT, ui_font
 
 TOOLTIP_FONT_PIXELS = 12
 TOOLTIP_WRAP_WIDTH = 400  # pixels of text, padding excluded
-# Tooltips wait a while before appearing, and stop chaining soon after one hides.
+# Tooltips wait a while before appearing, and stop chaining soon after one hides
+# (applied by AppStyle, gui/app_style.py).
 TOOLTIP_WAKE_UP_MS = 1200
 TOOLTIP_FALL_ASLEEP_MS = 300
 # A word wider than the limit (typically a path) breaks after one of these, kept at line end.
@@ -27,17 +28,6 @@ _PIECE = re.compile(r"[^\\/_-]*[\\/_-]|[^\\/_-]+")
 # A line that is a path (D:\..., \\server\..., /..., ~/..., ./...): its folder names may
 # contain spaces, so it wraps after separators first, never in the middle of a name.
 _PATH_START = re.compile(r"([A-Za-z]:)?[\\/]|~[\\/]|\.{1,2}[\\/]")
-
-
-class TooltipTimingStyle(QProxyStyle):
-    """Wraps the application style to slow tooltips down; everything else is unchanged."""
-
-    def styleHint(self, hint, option=None, widget=None, returnData=None):
-        if hint == QStyle.StyleHint.SH_ToolTip_WakeUpDelay:
-            return TOOLTIP_WAKE_UP_MS
-        if hint == QStyle.StyleHint.SH_ToolTip_FallAsleepDelay:
-            return TOOLTIP_FALL_ASLEEP_MS
-        return super().styleHint(hint, option, widget, returnData)
 
 
 def tooltip_font() -> QFont:

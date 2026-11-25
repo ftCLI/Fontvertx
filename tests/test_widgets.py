@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.__main__ import _mono_family
+from fontvertx.gui import column_widths
 from fontvertx.gui.drop_zone_frame import zone_colors
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.instance_tree import InstanceTree
@@ -586,8 +587,10 @@ def test_file_table_renders_and_configures_columns(qapp: QApplication) -> None:
     qapp.processEvents()
     assert table.verticalHeader().isHidden()
     assert table.horizontalHeader().isVisible()
-    assert table.horizontalHeader().sectionSize(1) == 80
-    assert table.horizontalHeader().sectionSize(3) == 70
+    header = table.horizontalHeader()
+    # Widths come from font metrics (see test_column_widths.py), not fixed pixel counts.
+    assert header.sectionSize(1) >= column_widths.badge_width(column_widths.FORMAT_BADGES)
+    assert header.sectionSize(3) >= column_widths.upm_width(table.font())
     assert table.grab().toImage().size() == empty.size()
 
 
