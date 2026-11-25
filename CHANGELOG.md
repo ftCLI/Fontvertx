@@ -25,6 +25,10 @@
 - The checkboxes of the Set options card (Subroutinize, Recalculate bounding boxes...) and
   the Tolerance and Simplify labels are only as wide as their text, so their tooltips no
   longer appear over the empty space to the right of it.
+- When the cards are stacked (narrow window), the sidebar cards no longer show a second
+  scrollbar of their own inside the page's: they are always as tall as their content,
+  which they follow live (another profile, an output folder, the organization example),
+  and only the page scrolls.
 
 ## 1.0.0
 

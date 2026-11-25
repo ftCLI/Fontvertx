@@ -13,6 +13,7 @@ from PySide6.QtGui import QCloseEvent, QDropEvent, QEnterEvent, QFont, QImage, Q
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QDialog,
     QFileDialog,
     QLabel,
@@ -3962,3 +3963,94 @@ def test_drop_zone_is_hidden_once_the_list_has_fonts(win: ConverterWindow, tmp_p
     win._clear_files()
     QApplication.processEvents()
     assert win.drop_zone.isVisible()
+
+
+def _assert_sidebar_follows_content(win: ConverterWindow) -> None:
+    scroll = win.sidebar_scroll
+    assert scroll.verticalScrollBar().maximum() == 0
+    assert scroll.height() == scroll.widget().height()
+    assert win.sidebar_scrollbar.isHidden()
+    assert win.sidebar_overflow_fade.isHidden()
+
+
+def test_stacked_sidebar_never_scrolls_by_itself(
+    win: ConverterWindow,
+    qapp: QApplication,
+    fonts: Path,
+    qtbot_wait: Wait,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    win.setStyleSheet(stylesheet())
+    _scan(win, [fonts], qtbot_wait)
+    win.resize(800, 700)
+    win.show()
+    _settle(qapp)
+    assert win.body_layout.direction() == QBoxLayout.Direction.TopToBottom
+    assert win.content_scroll.verticalScrollBar().maximum() > 0
+    _assert_sidebar_follows_content(win)
+
+    for conversion in window_module.CONVERSIONS:
+        win.conversion.setCurrentIndex(win.conversion.findData(conversion))
+        assert win.conversion.currentData() == conversion
+        # Hidden right away, not only once the layout has settled.
+        assert win.sidebar_scrollbar.isHidden()
+        assert win.sidebar_overflow_fade.isHidden()
+        _settle(qapp)
+        _assert_sidebar_follows_content(win)
+
+    output = tmp_path.joinpath(*["a-rather-long-output-folder-name"] * 6)
+    output.mkdir(parents=True)
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(output))
+    )
+    win.destination_folder_radio.setChecked(True)
+    assert win.output_directory == output
+    _settle(qapp)
+    _assert_sidebar_follows_content(win)
+
+    for _ in range(2):
+        win.overwrite.setChecked(not win.overwrite.isChecked())
+        _settle(qapp)
+        _assert_sidebar_follows_content(win)
+
+    win.resize(MIN_WIDTH, 700)
+    _settle(qapp)
+    _assert_sidebar_follows_content(win)
+
+    # Content that grows on its own, with no window resize: wrapped text is measured
+    # at the sidebar's width, and the sidebar follows it.
+    win.organization_levels = (("family", "format"),)
+    win._update_organization_button()
+    _settle(qapp)
+    assert win.organization_example.isVisible()
+    _assert_sidebar_follows_content(win)
+    height = win.sidebar_scroll.height()
+    win.organization_preview.set_path("/".join(["a-long-example-folder"] * 16) + "/Font.otf")
+    _settle(qapp)
+    assert win.sidebar_scroll.height() > height
+    _assert_sidebar_follows_content(win)
+
+
+def test_sidebar_scroll_mode_follows_breakpoint(win: ConverterWindow, qapp: QApplication) -> None:
+    win.setStyleSheet(stylesheet())
+    win.conversion.setCurrentIndex(win.conversion.findData("ft2wf"))
+    win.show()
+    scroll = win.sidebar_scroll
+    for _ in range(2):
+        win.resize(1200, 600)
+        _settle(qapp)
+        assert win.body_layout.direction() == QBoxLayout.Direction.LeftToRight
+        native = scroll.verticalScrollBar()
+        assert native.maximum() > 0
+        assert scroll.minimumHeight() == layout_manager.MIN_SIDEBAR_HEIGHT
+        assert scroll.maximumHeight() == layout_manager.QWIDGETSIZE_MAX
+        assert not win.sidebar_overflow_fade.isHidden()
+        native.setValue(10)
+        assert win.sidebar_scrollbar.isVisible()
+
+        win.resize(layout_manager.BODY_BREAKPOINT - 1, 600)
+        _settle(qapp)
+        assert win.body_layout.direction() == QBoxLayout.Direction.TopToBottom
+        _assert_sidebar_follows_content(win)
+        assert native.value() == 0
