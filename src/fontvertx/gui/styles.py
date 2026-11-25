@@ -1320,6 +1320,17 @@ QHeaderView::section, QTableCornerButton::section {
 }
 QTableView#fontFileTable QHeaderView::section, QTreeWidget#instanceTree QHeaderView::section {
     border-bottom-color: $border;
+    /* Column separator: the 1px border takes the place of 1px of right padding, so the
+       label rect (and the size from contents) is the same as without it. */
+    border-right: 1px solid $border_strong;
+    padding-right: 2px;
+}
+QTableView#fontFileTable QHeaderView::section:last,
+QTableView#fontFileTable QHeaderView::section:only-one,
+QTreeWidget#instanceTree QHeaderView::section:last,
+QTreeWidget#instanceTree QHeaderView::section:only-one {
+    border-right: none;
+    padding-right: 3px;
 }
 QHeaderView::section:first {
     padding-left: 16px;

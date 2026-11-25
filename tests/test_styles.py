@@ -475,6 +475,56 @@ def _selector_block(sheet: str, selector_pattern: str) -> str:
     return match.group(1)
 
 
+def test_header_sections_have_right_separator_except_last(icon_dir: Path) -> None:
+    sheet = build_stylesheet(LIGHT)
+    section = _selector_block(
+        sheet,
+        r"QTableView#fontFileTable QHeaderView::section,\s*"
+        r"QTreeWidget#instanceTree QHeaderView::section",
+    )
+    assert f"border-right: 1px solid {LIGHT.border_strong};" in section
+    # The border replaces 1px of the 3px padding: label positions do not move.
+    assert "padding-right: 2px;" in section
+    last = _selector_block(
+        sheet,
+        r"QTableView#fontFileTable QHeaderView::section:last,\s*"
+        r"QTableView#fontFileTable QHeaderView::section:only-one,\s*"
+        r"QTreeWidget#instanceTree QHeaderView::section:last,\s*"
+        r"QTreeWidget#instanceTree QHeaderView::section:only-one",
+    )
+    assert "border-right: none;" in last
+    assert "padding-right: 3px;" in last
+    # Separators belong to the header only: rows and the scrollbar filler get none.
+    assert "border-right" not in _selector_block(sheet, r"QWidget#tableScrollbarHeader")
+    assert "border-right" not in _selector_block(sheet, r"QHeaderView::section, QTableCornerButton::section")
+
+
+def test_header_separators_render_between_sections_only(qapp: QApplication) -> None:
+    table = FileTable()
+    table.setStyleSheet(build_stylesheet(LIGHT))
+    model = QStandardItemModel(100, 6, table)
+    table.setModel(model)
+    table.configure_columns()
+    table.resize(650, 200)
+    table.show()
+    QTest.qWait(30)
+    header = table.horizontalHeader()
+    visible = [c for c in range(model.columnCount()) if not header.isSectionHidden(c)]
+    assert len(visible) > 1
+    image = header.grab().toImage()
+    scale = image.width() / header.width()
+    y = round(header.height() / 2 * scale)
+
+    def right_edge(column: int) -> QColor:
+        x = header.sectionViewportPosition(column) + header.sectionSize(column) - 1
+        return image.pixelColor(round(x * scale), y)
+
+    for column in visible[:-1]:
+        assert right_edge(column) == QColor(LIGHT.border_strong)
+    assert right_edge(visible[-1]) == QColor(LIGHT.table_header)
+    table.close()
+
+
 def test_checkbox_and_row_selection_tokens_are_applied(icon_dir: Path) -> None:
     sheet = build_stylesheet(LIGHT)
     checked = _selector_block(
