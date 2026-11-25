@@ -94,7 +94,7 @@ uv run pytest
 
 The project uses `ruff`, `mypy`, `bandit` and `pip-audit`; CI runs the tests on Python 3.12, 3.14 and 3.15 on Linux, Windows and macOS, with a 90% coverage threshold.
 
-The ready-to-run apps are built with PyInstaller: `.\packaging\windows\build.ps1` on Windows, `./packaging/macos/build.sh` on a Mac with Apple Silicon. The official builds come from the `build.yml` workflow, which tests each build's CLI and attaches the zips to the GitHub release.
+The ready-to-run apps are built with PyInstaller: `.\packaging\windows\build.ps1` on Windows, `./packaging/macos/build.sh` on a Mac with Apple Silicon. The official builds come from the `build.yml` workflow, which tests each build's CLI and attaches the zips to the GitHub release. The version lives only in `pyproject.toml`: bump it with `uv version <x>` or `uv version --bump patch|minor|major`, with nothing else to edit.
 
 ## License
 

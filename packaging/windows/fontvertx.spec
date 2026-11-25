@@ -7,7 +7,7 @@
 # Build with packaging/windows/build.ps1 from the repository root.
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files
+from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metadata
 
 ROOT = Path(SPECPATH).parents[1]
 HERE = Path(SPECPATH)
@@ -15,6 +15,9 @@ ICON = str(ROOT / "src" / "fontvertx" / "assets" / "fontvertx.ico")
 
 # Package data: icons, SVG/PNG/ICO assets and the bundled Inter / JetBrains Mono fonts.
 datas = collect_data_files("fontvertx")
+# The package metadata: fontvertx.__version__ comes from importlib.metadata, so the
+# build must run where fontvertx is installed (uv run, as build.ps1 does).
+datas += copy_metadata("fontvertx")
 binaries = []
 hiddenimports = []
 
