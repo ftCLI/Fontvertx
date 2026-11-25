@@ -55,6 +55,7 @@ dev = [
     "mypy>=2.4.1",
     "bandit[toml]>=1.9.4",
     "pip-audit>=2.10.1",
+    "bump-my-version>=1.8.1",
 ]
 build = ["pyinstaller>=6"]
 
@@ -88,3 +89,37 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "fontvertx"
+
+[tool.bumpversion]
+# `uv run bump-my-version bump patch|minor|major` updates every copy of the version.
+# Releases are tagged on GitHub, and the bump is committed with the release changes.
+current_version = "1.1.0"
+commit = false
+tag = false
+# The bump is part of the release changes, which are usually not committed yet.
+allow_dirty = true
+
+[[tool.bumpversion.files]]
+# Only the [project] version line, never a dependency version.
+filename = "pyproject.toml"
+search = """
+name = "fontvertx"
+version = "{current_version}"
+"""
+replace = """
+name = "fontvertx"
+version = "{new_version}"
+"""
+
+[[tool.bumpversion.files]]
+# Absolute links pinned to the release tag (raw.githubusercontent.com/…/v…/ and
+# github.com/…/blob/v…/): the README is also the PyPI page.
+filename = "README.md"
+search = "/v{current_version}/"
+replace = "/v{new_version}/"
+
+[[tool.bumpversion.files]]
+filename = "docs/manual.md"
+regex = true
+search = '^Version {current_version} · [A-Z][a-z]+ \d{{4}}$'
+replace = "Version {new_version} · {now:%B %Y}"
