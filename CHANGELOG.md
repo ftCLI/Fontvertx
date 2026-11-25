@@ -17,6 +17,11 @@
   counting bug, PYSIDE-3474); from Python 3.12 it is harmless. The ready-to-run apps include
   their own Python and are not affected.
 - macOS: the app now appears in the Dock and in the Cmd+Tab switcher.
+- Linux: the Format, Outlines and UPM columns of the font list and the instance list are
+  no longer cut off ("1…0") with larger desktop fonts or display scaling. Their width now
+  follows the font size, and they are recomputed when it changes.
+- Linux: the buttons of dialogs and message boxes (OK, Cancel, Apply...) no longer show
+  icons from the desktop theme, as on Windows and macOS.
 
 ## 1.0.0
 
