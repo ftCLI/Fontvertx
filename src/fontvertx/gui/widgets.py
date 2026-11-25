@@ -70,6 +70,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from fontvertx.constants import MAX_UPM, MIN_UPM
+from fontvertx.gui.column_widths import METRIC_EVENTS, fixed_column_widths
 from fontvertx.gui.drop_zone_frame import paint_zone_frame
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.styles import (
@@ -1153,15 +1154,29 @@ class FileTable(QTableView):
             helper.handle_event(watched, event)
         return super().eventFilter(watched, event)
 
+    # Logical indexes of the columns sized from their content (see column_widths).
+    FIXED_COLUMNS = {"format": 1, "outlines": 2, "upm": 3}
+
     def configure_columns(self) -> None:
         header = self.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column, width in ((1, 80), (2, 110), (3, 70), (4, 140), (5, 140)):
+        for column in range(1, 6):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
-            header.resizeSection(column, width)
+        for column in (4, 5):
+            header.resizeSection(column, 140)
+        self.update_column_widths()
         for column in (4, 5):
             self.setColumnHidden(column, True)
+
+    def update_column_widths(self) -> None:
+        fixed_column_widths(self, self.horizontalHeader(), self.FIXED_COLUMNS)
+
+    def event(self, event: QEvent) -> bool:
+        # Format, Outlines and UPM widths depend on the font metrics.
+        if event.type() in METRIC_EVENTS:
+            QTimer.singleShot(0, self, self.update_column_widths)
+        return super().event(event)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         accept_local_files(event)

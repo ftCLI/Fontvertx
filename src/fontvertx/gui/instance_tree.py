@@ -13,6 +13,7 @@ from PySide6.QtCore import (
     QRectF,
     QSize,
     Qt,
+    QTimer,
     Signal,
 )
 from PySide6.QtGui import (
@@ -55,6 +56,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from fontvertx.gui.column_widths import METRIC_EVENTS, fixed_column_widths
 from fontvertx.gui.file_list import FontBadgeDelegate, FontRowDelegate, font_row_background
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.styles import LIGHT, RADIUS_SM, radius_px, tabular_font, ui_font
@@ -441,9 +443,7 @@ class InstanceTree(QTreeWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in range(1, self.columnCount()):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
-        header.resizeSection(1, 90)
-        header.resizeSection(2, 90)
-        header.resizeSection(3, 70)
+        self.update_column_widths()
         header.resizeSection(_LOCATION_COLUMN, LOCATION_MIN_WIDTH)
         self.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self._filter_text = ""
@@ -747,6 +747,17 @@ class InstanceTree(QTreeWidget):
         self.checksChanged.emit()
 
     _UPM_COLUMN = 3
+    # Logical indexes of the columns sized from their content (see column_widths).
+    FIXED_COLUMNS = {"format": 1, "outlines": 2, "upm": _UPM_COLUMN}
+
+    def update_column_widths(self) -> None:
+        fixed_column_widths(self, self.header(), self.FIXED_COLUMNS)
+
+    def event(self, event: QEvent) -> bool:
+        # Format, Outlines and UPM widths depend on the font metrics.
+        if event.type() in METRIC_EVENTS:
+            QTimer.singleShot(0, self, self.update_column_widths)
+        return super().event(event)
 
     @staticmethod
     def _row_texts(label: str, info: FontInfo, location: str) -> list[str]:

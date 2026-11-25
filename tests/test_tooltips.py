@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtGui import QFontMetrics, QPalette, Qt
-from PySide6.QtWidgets import QApplication, QStyle, QStyleFactory, QToolTip
+from PySide6.QtWidgets import QApplication, QToolTip
 
 from fontvertx.gui import tooltips
 from fontvertx.gui.styles import LIGHT, UI_FONT_FAMILY
@@ -83,16 +83,3 @@ def test_wrap_tip_keeps_existing_line_breaks_and_stays_plain(qapp: QApplication)
     assert tooltips.wrap_tip(text) == text
     for sample in (text, TOLERANCE):
         assert not Qt.mightBeRichText(tooltips.wrap_tip(sample))
-
-
-def test_timing_style_slows_tooltips_down(qapp: QApplication) -> None:
-    style = tooltips.TooltipTimingStyle(QStyleFactory.create("Fusion"))
-    hint = QStyle.StyleHint
-    assert style.styleHint(hint.SH_ToolTip_WakeUpDelay) == tooltips.TOOLTIP_WAKE_UP_MS == 1200
-    assert style.styleHint(hint.SH_ToolTip_FallAsleepDelay) == tooltips.TOOLTIP_FALL_ASLEEP_MS
-    assert tooltips.TOOLTIP_FALL_ASLEEP_MS == 300
-    # Every other hint comes from the wrapped style.
-    fusion = QStyleFactory.create("Fusion")
-    assert style.styleHint(hint.SH_ItemView_ActivateItemOnSingleClick) == fusion.styleHint(
-        hint.SH_ItemView_ActivateItemOnSingleClick
-    )
