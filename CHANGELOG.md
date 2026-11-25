@@ -22,6 +22,9 @@
   follows the font size, and they are recomputed when it changes.
 - Linux: the buttons of dialogs and message boxes (OK, Cancel, Apply...) no longer show
   icons from the desktop theme, as on Windows and macOS.
+- The checkboxes of the Set options card (Subroutinize, Recalculate bounding boxes...) and
+  the Tolerance and Simplify labels are only as wide as their text, so their tooltips no
+  longer appear over the empty space to the right of it.
 
 ## 1.0.0
 

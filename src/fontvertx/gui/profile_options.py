@@ -255,11 +255,13 @@ class ProfileOptionsPanel(QGroupBox):
         spin_grid = QGridLayout()
         spin_grid.setHorizontalSpacing(12)
         spin_grid.setVerticalSpacing(6)
-        spin_grid.addWidget(self.tolerance_label, 0, 0)
+        # Left-aligned, so each label and checkbox (and its tooltip) is only as wide as
+        # its text, not as the widest one in the column.
+        spin_grid.addWidget(self.tolerance_label, 0, 0, Qt.AlignmentFlag.AlignLeft)
         spin_grid.addWidget(self.tolerance_field, 0, 1)
-        spin_grid.addWidget(self.simplify_label, 1, 0)
+        spin_grid.addWidget(self.simplify_label, 1, 0, Qt.AlignmentFlag.AlignLeft)
         spin_grid.addWidget(self.simplify_field, 1, 1)
-        spin_grid.addWidget(self.use_target_upm, 2, 0)
+        spin_grid.addWidget(self.use_target_upm, 2, 0, Qt.AlignmentFlag.AlignLeft)
         spin_grid.addWidget(self.target_upm_field, 2, 1)
         spin_grid.setColumnStretch(2, 1)
         options.addLayout(spin_grid)
@@ -273,8 +275,10 @@ class ProfileOptionsPanel(QGroupBox):
         options.addWidget(self.upm_warning_label)
         self.use_target_upm.toggled.connect(self._update_upm_warning)
         self.target_upm.valueChanged.connect(self._update_upm_warning)
-        options.addWidget(self.subroutinize)
-        options.addWidget(self.autohint)
+        # Checkboxes are left-aligned so they (and their tooltips) end with their text
+        # instead of stretching across the card.
+        options.addWidget(self.subroutinize, 0, Qt.AlignmentFlag.AlignLeft)
+        options.addWidget(self.autohint, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.format_label = QLabel("Output format:")
         self.format_woff = QCheckBox("WOFF")
@@ -320,11 +324,11 @@ class ProfileOptionsPanel(QGroupBox):
         formats.addWidget(self.format_woff2)
         formats.addStretch()
         options.addLayout(formats)
-        options.addWidget(self.obfuscate_names)
-        options.addWidget(self.remove_unused_glyphs)
-        options.addWidget(self.remove_non_windows_names)
-        options.addWidget(self.remove_dsig)
-        options.addWidget(self.css_kit)
+        options.addWidget(self.obfuscate_names, 0, Qt.AlignmentFlag.AlignLeft)
+        options.addWidget(self.remove_unused_glyphs, 0, Qt.AlignmentFlag.AlignLeft)
+        options.addWidget(self.remove_non_windows_names, 0, Qt.AlignmentFlag.AlignLeft)
+        options.addWidget(self.remove_dsig, 0, Qt.AlignmentFlag.AlignLeft)
+        options.addWidget(self.css_kit, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.no_profile_options = OptionsEmptyState()
         options.addWidget(self.no_profile_options)
@@ -339,9 +343,9 @@ class ProfileOptionsPanel(QGroupBox):
         self.reorder_tables = QCheckBox("Reorder tables on save")
         self.reorder_tables.setChecked(bool(FACTORY_DEFAULTS["reorder_tables"]))
         self.reorder_tables.setToolTip("Use a standard table order for compatibility.")
-        options.addWidget(self.recalc_bboxes)
-        options.addWidget(self.recalc_timestamp)
-        options.addWidget(self.reorder_tables)
+        options.addWidget(self.recalc_bboxes, 0, Qt.AlignmentFlag.AlignLeft)
+        options.addWidget(self.recalc_timestamp, 0, Qt.AlignmentFlag.AlignLeft)
+        options.addWidget(self.reorder_tables, 0, Qt.AlignmentFlag.AlignLeft)
         self.set_conversion("ttf2otf")
 
     def set_conversion(self, conversion: str | None) -> None:
