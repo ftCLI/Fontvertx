@@ -7,7 +7,9 @@ from PySide6.QtCore import (
     QEvent,
     QLocale,
     QObject,
+    QPoint,
     QPointF,
+    QRect,
     QSize,
     Qt,
     QTimer,
@@ -22,13 +24,16 @@ from PySide6.QtGui import (
     QDragMoveEvent,
     QDropEvent,
     QEnterEvent,
+    QFocusEvent,
     QFont,
     QFontMetrics,
     QHelpEvent,
+    QHoverEvent,
     QIcon,
     QKeyEvent,
     QKeySequence,
     QLinearGradient,
+    QMouseEvent,
     QPainter,
     QPaintEvent,
     QPalette,
@@ -61,6 +66,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QStyleOptionButton,
     QStyleOptionComboBox,
+    QStyleOptionViewItem,
     QStylePainter,
     QTableView,
     QToolTip,
@@ -576,6 +582,109 @@ class KeyboardPushButton(QPushButton):
             event.accept()
             return
         super().keyPressEvent(event)
+
+
+COLUMN_MENU_LABEL = "Show columns"
+COLUMN_MENU_ICON_SIZE = 18
+# The column menu button fills the header corner: a fixed width, whatever the scrollbar
+# width, covering the end of the header and, when the scrollbar shows, the band above it.
+HEADER_CORNER_WIDTH = 32
+
+
+class ReservedEndHeader(QHeaderView):
+    """Horizontal header that keeps its right end free (a viewport margin).
+
+    The sections never run under what sits there (the column menu button), so they stay
+    over their cells. The margin area keeps the header background.
+    """
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        # What QTableView sets on the header it creates itself.
+        self.setSectionsClickable(True)
+        self.setHighlightSections(True)
+        self._reserved = 0
+
+    @property
+    def reserved(self) -> int:
+        return self._reserved
+
+    def set_reserved(self, width: int) -> None:
+        if width != self._reserved:
+            self._reserved = width
+            self.setViewportMargins(0, 0, width, 0)
+
+
+class ColumnMenuButton(KeyboardPushButton):
+    """Icon button in the header corner of the font list: opens the column menu.
+
+    Ghost style (see the stylesheet); while the menu is open the button is tinted and
+    its icon turns accent. The menu drops below the button, its right edge on the right
+    edge of ``anchor`` (the table). Space, Return and Enter open it from the keyboard.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("columnMenuButton")
+        self._icons = {
+            False: material_icon("view_column", LIGHT.text_muted, COLUMN_MENU_ICON_SIZE),
+            True: material_icon("view_column", LIGHT.accent, COLUMN_MENU_ICON_SIZE),
+        }
+        self.setIcon(self._icons[False])
+        self.setIconSize(QSize(COLUMN_MENU_ICON_SIZE, COLUMN_MENU_ICON_SIZE))
+        self.setToolTip(COLUMN_MENU_LABEL)
+        self.setAccessibleName(COLUMN_MENU_LABEL)
+        # In the Tab order, but a click leaves the focus on the table.
+        self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.setProperty("menuOpen", "false")
+        # The focus ring shows for keyboard focus only (not when the window activates).
+        self.setProperty("keyboardFocus", "false")
+        self._anchor: QWidget | None = None
+
+    def _repolish(self) -> None:
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def focusInEvent(self, event: QFocusEvent) -> None:
+        super().focusInEvent(event)
+        keyboard = event.reason() in (
+            Qt.FocusReason.TabFocusReason,
+            Qt.FocusReason.BacktabFocusReason,
+        )
+        self.setProperty("keyboardFocus", "true" if keyboard else "false")
+        self._repolish()
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:
+        super().focusOutEvent(event)
+        self.setProperty("keyboardFocus", "false")
+        self._repolish()
+
+    def attach_menu(self, menu: QMenu, anchor: QWidget) -> None:
+        self._anchor = anchor
+        self.setMenu(menu)
+        menu.aboutToShow.connect(lambda: self.set_menu_open(True))
+        menu.aboutToHide.connect(lambda: self.set_menu_open(False))
+        menu.installEventFilter(self)
+
+    def menu_position(self, menu: QMenu) -> QPoint:
+        """Top-left of ``menu`` (global): under the button, right-aligned with the anchor."""
+        anchor = self._anchor or self
+        right = anchor.mapToGlobal(QPoint(anchor.width(), 0)).x()
+        top = self.mapToGlobal(QPoint(0, self.height())).y()
+        return QPoint(right - menu.sizeHint().width(), top)
+
+    def set_menu_open(self, is_open: bool) -> None:
+        self.setProperty("menuOpen", "true" if is_open else "false")
+        self.setIcon(self._icons[is_open])
+        self._repolish()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        # QPushButton places its menu under its left edge: move it when the button opened
+        # it (the same menu also opens from a right click on the header, left alone).
+        if watched is self.menu() and event.type() == QEvent.Type.Show and self.isDown():
+            watched.move(self.menu_position(watched))
+        return super().eventFilter(watched, event)
 
 
 class HoverIconButton(KeyboardPushButton):
@@ -1151,6 +1260,7 @@ class FileTable(QTableView):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("fontFileTable")
+        self.setHorizontalHeader(ReservedEndHeader(self))
         # Slashed zeros and tabular figures for every cell and the header.
         self.setFont(tabular_font(self.font()))
         self.horizontalHeader().setFont(tabular_font(self.horizontalHeader().font()))
@@ -1171,14 +1281,182 @@ class FileTable(QTableView):
         self.horizontalHeader().setFixedHeight(30)
         self._scrollbar_header = ScrollbarHeaderFiller(self, self.horizontalHeader())
         self._scrollbar_header_cap = self._scrollbar_header.cap
+        # The column menu button: a direct child of the table, on top of everything, in
+        # the top-right corner (header height, HEADER_CORNER_WIDTH wide). The header keeps
+        # that much of its right end free (less the scrollbar, whose own band the filler
+        # paints); the rows run to the view's edge, and the strip past the last column is
+        # painted as part of each row (paintEvent).
+        self.column_button = ColumnMenuButton()
+        self.column_button.setParent(self)
+        self._tail_hover_row = -1
         self.setProperty("dragOver", "false")
         self.muted_color = QColor(LIGHT.text_disabled)
+        self.verticalScrollBar().installEventFilter(self)
+        # The scrollbar's container (with the filler) is raised by QAbstractScrollArea on
+        # its layout passes: each time (ZOrderChange) the button goes back on top, so the
+        # filler never covers it nor takes its clicks.
+        self._scrollbar_container = self._scrollbar_header_cap.parentWidget()
+        if self._scrollbar_container is not None:
+            self._scrollbar_container.installEventFilter(self)
+        self._place_column_button()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         helper = getattr(self, "_scrollbar_header", None)
         if helper is not None:
             helper.handle_event(watched, event)
+            kind = event.type()
+            if watched is getattr(self, "_scrollbar_container", None) and kind in (
+                QEvent.Type.ZOrderChange,
+                QEvent.Type.Show,
+            ):
+                self.column_button.raise_()
+            if (
+                watched is self.horizontalHeader()
+                and kind in (QEvent.Type.Resize, QEvent.Type.Move)
+            ) or (
+                watched is self.verticalScrollBar()
+                and kind in (QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.Resize)
+            ):
+                self._place_column_button()
         return super().eventFilter(watched, event)
+
+    def header_reserve(self) -> int:
+        """Header width kept free for the button: the corner less the visible scrollbar."""
+        bar = self.verticalScrollBar()
+        covered = bar.width() if bar.isVisibleTo(self) else 0
+        return max(0, HEADER_CORNER_WIDTH - covered)
+
+    def header_width(self) -> int:
+        """Width the columns share: the view less the header's reserved end."""
+        return self.viewport().width() - self.header_reserve()
+
+    def _place_column_button(self) -> None:
+        button = getattr(self, "column_button", None)
+        if button is None:
+            return
+        header = self.horizontalHeader()
+        if isinstance(header, ReservedEndHeader):
+            header.set_reserved(self.header_reserve())
+        right = self.contentsRect().right() + 1
+        button.setGeometry(
+            right - HEADER_CORNER_WIDTH,
+            header.geometry().top(),
+            HEADER_CORNER_WIDTH,
+            header.height(),
+        )
+        button.raise_()
+        # QAbstractScrollArea raises the scrollbar container while it lays out its
+        # children (after the events that brought us here): raise again once it is done.
+        QTimer.singleShot(0, button, button.raise_)
+        layout = getattr(self, "_column_layout", None)
+        if layout is not None:
+            layout.relayout()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._place_column_button()
+
+    def _columns_end(self) -> int:
+        """Viewport x where the last visible column ends (-1 without columns)."""
+        header = self.horizontalHeader()
+        visible = [c for c in range(header.count()) if not header.isSectionHidden(c)]
+        if not visible:
+            return -1
+        last = max(visible, key=header.visualIndex)
+        return self.columnViewportPosition(last) + self.columnWidth(last)
+
+    def _last_visible_column(self) -> int:
+        header = self.horizontalHeader()
+        visible = [c for c in range(header.count()) if not header.isSectionHidden(c)]
+        return max(visible, key=header.visualIndex, default=-1)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        self._paint_row_tails()
+
+    def _paint_row_tails(self) -> None:
+        """Paint each row past the last column, up to the right edge of the view."""
+        model = self.model()
+        end = self._columns_end()
+        width = self.viewport().width() - end
+        delegate = self.itemDelegate()
+        paint_tail = getattr(delegate, "paint_row_tail", None)
+        if model is None or end < 0 or width <= 0 or paint_tail is None:
+            return
+        rows = model.rowCount()
+        first = self.rowAt(0)
+        if first < 0:
+            return
+        last = self.rowAt(self.viewport().height() - 1)
+        last = rows - 1 if last < 0 else last
+        column = self._last_visible_column()
+        selection = self.selectionModel()
+        base = QStyleOptionViewItem()
+        self.initViewItemOption(base)  # the state the view gives its cells (active, ...)
+        painter = QPainter(self.viewport())
+        for row in range(first, last + 1):
+            if self.isRowHidden(row):
+                continue
+            index = model.index(row, column)
+            option = QStyleOptionViewItem(base)
+            option.rect = QRect(end, self.rowViewportPosition(row), width, self.rowHeight(row))
+            if selection is not None and selection.isRowSelected(row, index.parent()):
+                option.state |= QStyle.StateFlag.State_Selected
+            paint_tail(painter, option, index)
+        painter.end()
+
+    def _in_row_tail(self, pos: QPointF) -> bool:
+        end = self._columns_end()
+        return end >= 0 and pos.x() >= end and self.rowAt(round(pos.y())) >= 0
+
+    def _to_last_column(self, event: QMouseEvent) -> QMouseEvent:
+        """The same mouse event moved onto the last column: the tail acts as the row."""
+        pos = QPointF(self._columns_end() - 1, event.position().y())
+        return QMouseEvent(
+            event.type(),
+            pos,
+            self.viewport().mapToGlobal(pos),
+            event.button(),
+            event.buttons(),
+            event.modifiers(),
+        )
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        super().mousePressEvent(
+            self._to_last_column(event) if self._in_row_tail(event.position()) else event
+        )
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        super().mouseReleaseEvent(
+            self._to_last_column(event) if self._in_row_tail(event.position()) else event
+        )
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        super().mouseDoubleClickEvent(
+            self._to_last_column(event) if self._in_row_tail(event.position()) else event
+        )
+
+    def viewportEvent(self, event: QEvent) -> bool:
+        # Qt repaints a row when the hovered *cell* changes; the tail has no cell, so
+        # moving from one row's tail to another's would leave the old row hovered.
+        kind = event.type()
+        if kind == QEvent.Type.Resize:
+            # The scrollbar appeared or went away: new header reserve, and its container
+            # (with the filler) is a later sibling of the button: back on top.
+            self._place_column_button()
+        if kind in (QEvent.Type.HoverMove, QEvent.Type.HoverLeave, QEvent.Type.Leave):
+            row = -1
+            if kind == QEvent.Type.HoverMove and isinstance(event, QHoverEvent):
+                row = self.rowAt(round(event.position().y()))
+            if row != self._tail_hover_row:
+                for changed in (self._tail_hover_row, row):
+                    if changed >= 0:
+                        top = self.rowViewportPosition(changed)
+                        self.viewport().update(
+                            0, top, self.viewport().width(), self.rowHeight(changed)
+                        )
+                self._tail_hover_row = row
+        return super().viewportEvent(event)
 
     # Logical indexes of the columns sized from their content (see column_widths).
     FIXED_COLUMNS = {"format": 1, "outlines": 2, "upm": 3}
@@ -1198,6 +1476,7 @@ class FileTable(QTableView):
             minimums={0: FIRST_COLUMN_MIN_WIDTH},
             default_minimum=OPTIONAL_COLUMN_MIN_WIDTH,
             auto_fit={4: OPTIONAL_COLUMN_MAX_WIDTH, 5: OPTIONAL_COLUMN_MAX_WIDTH},
+            available=self.header_width,
         )
 
     def setColumnHidden(self, column: int, hide: bool) -> None:

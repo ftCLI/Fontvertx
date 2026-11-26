@@ -16,7 +16,16 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QBrush, QColor, QCursor, QFont, QFontMetrics, QPainter, QPalette
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QCursor,
+    QFont,
+    QFontMetrics,
+    QIcon,
+    QPainter,
+    QPalette,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QStyle,
@@ -250,6 +259,43 @@ class FontRowDelegate(QStyledItemDelegate):
             and view.currentIndex().row() == index.row()
         ):
             painter.fillRect(rect.left(), rect.top(), 2, rect.height(), QColor(LIGHT.accent))
+        painter.restore()
+
+    def paint_row_tail(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """The part of a table row past its last column, painted like an empty cell.
+
+        ``option`` is the view's item option for the strip (rect and state) and ``index``
+        the row's last cell: the background goes through the same path as the cells
+        (hover, drag tint, stylesheet selection colors), without any content.
+        """
+        display_option = QStyleOptionViewItem(option)
+        self.initStyleOption(display_option, index)
+        self.prepare_row(display_option, index)
+        display_option.text = ""
+        display_option.icon = QIcon()
+        display_option.features &= ~(
+            QStyleOptionViewItem.ViewItemFeature.HasDisplay
+            | QStyleOptionViewItem.ViewItemFeature.HasDecoration
+            | QStyleOptionViewItem.ViewItemFeature.HasCheckIndicator
+        )
+        if display_option.backgroundBrush.style() != Qt.BrushStyle.NoBrush:
+            painter.fillRect(display_option.rect, display_option.backgroundBrush)
+        if display_option.widget is not None:
+            display_option.widget.style().drawControl(
+                QStyle.ControlElement.CE_ItemViewItem,
+                display_option,
+                painter,
+                display_option.widget,
+            )
+        rect = option.rect
+        painter.save()
+        painter.setPen(QColor(LIGHT.row_separator))
+        painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
         painter.restore()
 
     def prepare_row(

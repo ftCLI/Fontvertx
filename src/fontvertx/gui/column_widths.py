@@ -6,7 +6,7 @@ as wide as its widest possible content or its header label with the sort indicat
 whichever is wider. Both views recompute them on font and screen-scale changes.
 """
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from PySide6.QtCore import QEvent, QObject, QTimer
 from PySide6.QtGui import QFont, QFontMetrics
@@ -102,8 +102,11 @@ class FillColumnLayout(QObject):
         minimums: dict[int, int],
         default_minimum: int,
         auto_fit: dict[int, int] | None = None,
+        available: Callable[[], int] | None = None,
     ) -> None:
         super().__init__(view)
+        # Width the columns share: the viewport, or less when the header reserves a part.
+        self._available = available
         self._view = view
         self._header = header
         self._fill = fill
@@ -207,7 +210,8 @@ class FillColumnLayout(QObject):
             if self._fill >= header.count() or header.isSectionHidden(self._fill):
                 return
             others = sum(header.sectionSize(c) for c in self._visible() if c != self._fill)
-            available = self._view_viewport.width() - others
+            total = self._available() if self._available else self._view_viewport.width()
+            available = total - others
             header.resizeSection(self._fill, max(self.minimum(self._fill), available))
         finally:
             self._busy = False

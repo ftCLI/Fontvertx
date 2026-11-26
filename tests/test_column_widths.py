@@ -192,29 +192,29 @@ def _fixed_widths(header: QHeaderView) -> list[int]:
 def test_name_fills_with_and_without_family_and_style(plain_table: FileTable) -> None:
     header = _show(plain_table)
     layout = plain_table._column_layout
-    viewport = plain_table.viewport().width()
+    available = plain_table.header_width()  # the header up to the corner
     fixed = sum(_fixed_widths(header))
     # Only Name and the fixed columns: Name fills, and no border is draggable.
     assert _modes(header)[:4] == [FIXED, FIXED, FIXED, FIXED]
-    assert header.sectionSize(0) == viewport - fixed
+    assert header.sectionSize(0) == available - fixed
     # Family shown: it takes its content width from Name; Name can now be dragged.
     plain_table.setColumnHidden(4, False)
     family = header.sectionSize(4)
     assert family == layout.content_width(4) <= column_widths.OPTIONAL_COLUMN_MAX_WIDTH
-    assert header.sectionSize(0) == viewport - fixed - family
+    assert header.sectionSize(0) == available - fixed - family
     assert _modes(header)[:5] == [INTERACTIVE, FIXED, FIXED, FIXED, FIXED]
     # Style shown: same, Family becomes draggable (Style compensates), Style does not.
     plain_table.setColumnHidden(5, False)
     style = header.sectionSize(5)
     assert style == layout.content_width(5)
     assert header.sectionSize(4) == family
-    assert header.sectionSize(0) == viewport - fixed - family - style
+    assert header.sectionSize(0) == available - fixed - family - style
     assert _modes(header) == [INTERACTIVE, FIXED, FIXED, FIXED, INTERACTIVE, FIXED]
     # Hidden again: the space goes back to Name; UPM is never stretched.
     plain_table.setColumnHidden(4, True)
-    assert header.sectionSize(0) == viewport - fixed - style
+    assert header.sectionSize(0) == available - fixed - style
     plain_table.setColumnHidden(5, True)
-    assert header.sectionSize(0) == viewport - fixed
+    assert header.sectionSize(0) == available - fixed
     assert header.sectionSize(UPM) == max(
         column_widths.upm_width(plain_table.font()), header.sectionSizeFromContents(UPM).width()
     )
@@ -234,7 +234,7 @@ def test_optional_columns_fit_content_up_to_a_maximum(qapp: QApplication) -> Non
         files.add_font(Path("a.otf"), "a.otf", _font_row("a.otf", family=LONG_FAMILY), True)
         QApplication.processEvents()
         assert header.sectionSize(4) == column_widths.OPTIONAL_COLUMN_MAX_WIDTH
-        assert _visible_length(header) == table.viewport().width()
+        assert _visible_length(header) == table.header_width()
     finally:
         table.close()
         files.shutdown()
@@ -316,7 +316,7 @@ def test_dragging_family_border_is_compensated_by_style(plain_table: FileTable) 
         family - 20,
         style + 20,
     )
-    assert _visible_length(header) == plain_table.viewport().width()
+    assert _visible_length(header) == plain_table.header_width()
 
 
 def test_narrow_window_shrinks_name_to_its_minimum_then_scrolls(
@@ -337,7 +337,7 @@ def test_window_resize_changes_only_name(plain_table: FileTable) -> None:
     plain_table.resize(1200, 300)
     QApplication.processEvents()
     assert [header.sectionSize(c) for c in (1, 2, 3, 4)] == before
-    assert _visible_length(header) == plain_table.viewport().width()
+    assert _visible_length(header) == plain_table.header_width()
 
 
 def test_double_click_on_border_fits_the_column(plain_table: FileTable) -> None:
@@ -356,7 +356,7 @@ def test_double_click_on_border_fits_the_column(plain_table: FileTable) -> None:
     _mouse(header, QEvent.Type.MouseButtonRelease, x)
     assert fitted == [4]
     assert header.sectionSize(4) == content
-    assert _visible_length(header) == plain_table.viewport().width()
+    assert _visible_length(header) == plain_table.header_width()
     # The last border (Style) is not a handle: double-clicking it does nothing.
     _mouse(header, QEvent.Type.MouseButtonDblClick, _handle(header, 5))
     assert fitted == [4]

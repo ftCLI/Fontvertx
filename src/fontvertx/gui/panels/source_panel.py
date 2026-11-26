@@ -227,9 +227,22 @@ def build_source_card(window: ConverterWindow) -> QGroupBox:
     w.file_list = FontFileList(w.files, w._compatibility_profile)
     w.column_menu = QMenu(w.files)
     table_header = w.files.horizontalHeader()
-    table_header.setToolTip("Click to sort; right-click to choose optional columns.")
+    table_header.setToolTip(
+        "Click to sort; right-click or use the button on the right to choose columns."
+    )
     table_header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     table_header.customContextMenuRequested.connect(w._show_column_menu)
+    w.files.column_button.attach_menu(w.column_menu, w.files)
+    # Every column is listed: the fixed ones checked and disabled, then the optional ones.
+    for column, name in enumerate(w.file_list.model.HEADERS):
+        if column in OPTIONAL_FONT_COLUMNS:
+            continue
+        action = w.column_menu.addAction(name)
+        action.setData(column)
+        action.setCheckable(True)
+        action.setChecked(True)
+        action.setEnabled(False)
+    w.column_menu.addSeparator()
     for column, (name, key) in OPTIONAL_FONT_COLUMNS.items():
         visible = w.store.get_bool(key)
         w.files.setColumnHidden(column, not visible)

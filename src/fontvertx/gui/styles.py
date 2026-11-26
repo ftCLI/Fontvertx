@@ -1342,6 +1342,40 @@ QWidget#tableScrollbarHeader {
     background: $table_header;
     border-bottom: 1px solid $border;
 }
+/* Column menu button of the font list: the top-right corner of the header band (same
+   background and bottom line, no separator before it). Ghost hover, tinted while its
+   menu is open, focus ring for keyboard focus only. */
+QPushButton#columnMenuButton {
+    background: $table_header;
+    border: 1px solid transparent;
+    border-bottom-color: $border;
+    border-radius: 0;
+    padding: 0;
+    /* Content box of the 32x30 corner (1px border all round). */
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 28px;
+    max-height: 28px;
+}
+QPushButton#columnMenuButton:hover:enabled, QPushButton#columnMenuButton:pressed:enabled {
+    background: $ghost_hover;
+}
+QPushButton#columnMenuButton[menuOpen="true"] {
+    background: $accent_tint;
+}
+QPushButton#columnMenuButton:focus, QPushButton#columnMenuButton:focus:hover {
+    border-color: transparent;
+    border-bottom-color: $border;
+}
+QPushButton#columnMenuButton[keyboardFocus="true"]:focus,
+QPushButton#columnMenuButton[keyboardFocus="true"]:focus:hover {
+    border-color: $accent;
+}
+QPushButton#columnMenuButton::menu-indicator {
+    image: none;
+    width: 0;
+    height: 0;
+}
 QHeaderView::up-arrow {
     image: $sort_up_icon;
     width: 17px;

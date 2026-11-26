@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QCursor, QFont, QImage, QPalette, QStandardItemModel
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.gui import styles
+from fontvertx.gui import widgets as widgets_module
 from fontvertx.gui import window as window_module
 from fontvertx.gui.file_list import FontFileList, FontRowDelegate
 from fontvertx.gui.instance_tree import InstanceTree
@@ -318,7 +319,8 @@ def test_stylesheet_has_no_unresolved_tokens(icon_dir: Path) -> None:
     sheet = build_stylesheet(LIGHT)
     assert not re.search(r"\$[a-z_]+", sheet)
     assert LIGHT.page in sheet
-    assert re.findall(r"image: (\S+);", sheet).count("none") == 2
+    # The two existing ones, plus the column menu button's (hidden) menu indicator.
+    assert re.findall(r"image: (\S+);", sheet).count("none") == 3
     assert "QComboBox::down-arrow" in sheet
     for name in ("arrow_downward", "arrow_upward", "expand_more", "expand_less"):
         assert f"{name}_{LIGHT.text_muted[1:]}.svg" in sheet
@@ -354,14 +356,16 @@ def test_table_header_aligns_when_scrollbar_appears(qapp: QApplication) -> None:
     table.resize(650, 200)
     table.show()
     qapp.processEvents()
-    assert table.verticalScrollBar().maximum() == 0
+    bar = table.verticalScrollBar()
+    assert bar.maximum() == 0 and not bar.isVisible()
     width_before = table.columnWidth(0)
     model.setRowCount(100)
     QTest.qWait(30)
-    bar = table.verticalScrollBar()
     header = table.horizontalHeader()
-    assert bar.maximum() > 0
-    assert table.columnWidth(0) == width_before - bar.width()
+    assert bar.maximum() > 0 and bar.isVisible()
+    # The columns end at the fixed-width header corner, which covers the band above the
+    # scrollbar: they keep their width when the bar appears.
+    assert table.columnWidth(0) == width_before
     for column in range(4):
         assert header.sectionViewportPosition(column) == table.columnViewportPosition(column)
     assert bar.mapTo(table, QPoint(0, 0)).y() >= header.geometry().bottom()
@@ -388,6 +392,7 @@ def test_table_scrollbar_header_filler_tracks_visibility(
     bar = table.verticalScrollBar()
     cap = table._scrollbar_header_cap
 
+    corner = table.column_button
     for rows, width in ((100, 650), (100, 700), (0, 700), (100, 700), (0, 650)):
         table.resize(width, 200)
         model.setRowCount(rows)
@@ -395,8 +400,14 @@ def test_table_scrollbar_header_filler_tracks_visibility(
         # short wait is not enough on slow CI runners).
         expected = rows > 0
         qtbot_wait(lambda e=expected: cap.isVisible() == bar.isVisible() == e, 2.0)
+        # The button (the header corner) is there either way, 32px wide, over the cap.
+        assert corner.isVisible() and corner.width() == widgets_module.HEADER_CORNER_WIDTH
+        assert corner.geometry().right() == table.contentsRect().right()
+        assert corner.geometry().top() == header.geometry().top()
+        assert corner.height() == header.height()
         if not rows:
             continue
+        assert corner.geometry().contains(QRect(cap.mapTo(table, QPoint(0, 0)), cap.size()))
         cap_pos = cap.mapTo(table, QPoint(0, 0))
         bar_pos = bar.mapTo(table, QPoint(0, 0))
         assert cap_pos.x() == bar_pos.x()

@@ -622,6 +622,7 @@ class ConverterWindow(QMainWindow):
             self.expand_instances_button,
             self.collapse_instances_button,
             self.files,
+            self.files.column_button,
             self.instance_tree,
             self.conversion.combo,
             profile.reset_button,
