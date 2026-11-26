@@ -70,10 +70,20 @@ def fixed_column_widths(view: QWidget, header: QHeaderView, columns: dict[str, i
         "outlines": badge_width(OUTLINE_BADGES),
         "upm": upm_width(view.font()),
     }
-    for key, column in columns.items():
-        if column >= header.count():
-            continue
-        width = max(contents[key], header.sectionSizeFromContents(column).width())
+    # Qt leaves the sort indicator out of the size while it is hidden, which it is while
+    # sorting is off (during a scan): measure with it shown, so the widths never depend
+    # on when they were measured.
+    indicator_shown = header.isSortIndicatorShown()
+    header.setSortIndicatorShown(True)
+    try:
+        widths = {
+            column: max(contents[key], header.sectionSizeFromContents(column).width())
+            for key, column in columns.items()
+            if column < header.count()
+        }
+    finally:
+        header.setSortIndicatorShown(indicator_shown)
+    for column, width in widths.items():
         header.resizeSection(column, width)
 
 

@@ -119,6 +119,33 @@ def test_instance_tree_columns_fit_their_content(tree: InstanceTree) -> None:
     _assert_fits(tree)
 
 
+def test_widths_measured_while_sorting_is_off_keep_room_for_the_indicator(
+    table: QAbstractItemView,
+) -> None:
+    """A scan turns sorting off (hiding the indicator): measuring then gives the same widths.
+
+    Otherwise Format stayed narrower after the first scan and grew by the indicator's
+    room at the next style change, e.g. a theme switch.
+    """
+    assert isinstance(table, FileTable)
+    header = _show(table)
+    table.update_column_widths()
+    sorted_widths = [header.sectionSize(column) for column in (FORMAT, OUTLINES, UPM)]
+
+    table.setSortingEnabled(False)
+    assert not header.isSortIndicatorShown()
+    table.update_column_widths()
+    assert [header.sectionSize(column) for column in (FORMAT, OUTLINES, UPM)] == sorted_widths
+    assert not header.isSortIndicatorShown()  # measuring leaves the indicator as it was
+
+    table.setSortingEnabled(True)
+    table.setStyleSheet("")
+    table.setStyleSheet(build_stylesheet(LIGHT))
+    for _ in range(3):
+        QApplication.processEvents()
+    assert [header.sectionSize(column) for column in (FORMAT, OUTLINES, UPM)] == sorted_widths
+
+
 FIXED = QHeaderView.ResizeMode.Fixed
 INTERACTIVE = QHeaderView.ResizeMode.Interactive
 LONG_NAME = "A-really-long-font-file-name-that-needs-room-Bold-Italic.woff2"
