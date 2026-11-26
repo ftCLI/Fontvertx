@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.1
+
+- The headers of the font table and of the instance list show thin dividers between
+  columns.
+- Column resizing is more natural: the divider follows the pointer, and the next
+  resizable column to its right gives or takes the space, so no horizontal scrollbar
+  appears. Format, Outlines and UPM have a fixed width that fits their content; Name
+  (Font / instance) fills the remaining space; Family and Style are as wide as their
+  content. Double-click a divider to fit the column to its content.
+- A Show columns button at the right end of the font table header shows the Family and
+  Style columns (right-clicking the header still works).
+- Instance list: custom instances are marked with a Custom chip. The context menu shows
+  only the actions that apply: Add custom instance… on a font, Edit and Remove on a custom
+  instance, none on named instances. Enter expands or collapses a font and edits a custom
+  instance.
+- A paused conversion now shows its progress bar and icons in amber, like the rest of the
+  paused footer, instead of grey. Warning colors use a single amber hue.
+- Windows: drop-down lists no longer show black square corners for an instant when they
+  open.
+- The help tooltips that appeared anywhere over the font table and the instance list,
+  empty space included, are gone; hovering a custom instance tells how to edit or remove
+  it.
+
 ## 1.1.0
 
 - The conversion now runs in the footer of the main window: progress, the file being
