@@ -1,6 +1,6 @@
 # Fontvertx — User Manual
 
-Version 1.1.0 · November 2026
+Version 1.2.0 · November 2026
 
 ## Contents
 
