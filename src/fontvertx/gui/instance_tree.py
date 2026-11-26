@@ -957,6 +957,8 @@ class InstanceTree(QTreeWidget):
         if path is None:
             return
         children = self._children(font)
+        # Custom instances in the order they were added, not as shown (a sort by Location
+        # reorders them): a rescan rebuilds them in that order.
         custom = sorted(
             (c for c in children if c.data(0, _CUSTOM_ROLE)),
             key=lambda c: c.data(0, _ORDER_ROLE),
