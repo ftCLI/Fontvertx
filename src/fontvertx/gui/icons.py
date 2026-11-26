@@ -12,6 +12,8 @@ from PySide6.QtCore import QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QIconEngine, QImage, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
+from fontvertx.gui.styles import ColorToken, resolve_color
+
 logger = logging.getLogger(__name__)
 
 _ICON_DIR = Path(__file__).parent.parent / "assets" / "icons"
@@ -19,6 +21,11 @@ ICON_SIZE = 18
 
 _renderers: dict[Path, QSvgRenderer] = {}
 _cache: dict[tuple[str, str, int, int, float], QPixmap] = {}
+
+
+def clear_cache() -> None:
+    """Drop the rendered pixmaps (after a theme switch the old colors are not needed)."""
+    _cache.clear()
 
 
 def _renderer(svg: Path) -> QSvgRenderer:
@@ -60,16 +67,19 @@ def render_icon(name: str, color: str, size: QSize, device_pixel_ratio: float) -
 class SvgIconEngine(QIconEngine):
     """Renders a tinted SVG for each requested size, mode and device pixel ratio."""
 
-    def __init__(self, name: str, color: str, disabled_color: str | None) -> None:
+    def __init__(
+        self, name: str, color: ColorToken | str, disabled_color: ColorToken | str | None
+    ) -> None:
         super().__init__()
         self._name = name
         self._color = color
         self._disabled_color = disabled_color
 
     def _color_for(self, mode: QIcon.Mode) -> str:
+        """Hex color for ``mode``; tokens are resolved now, so a theme switch recolors."""
         if mode is QIcon.Mode.Disabled and self._disabled_color is not None:
-            return self._disabled_color
-        return self._color
+            return resolve_color(self._disabled_color)
+        return resolve_color(self._color)
 
     def scaledPixmap(  # noqa: N802 - Qt override
         self, size: QSize, mode: QIcon.Mode, state: QIcon.State, scale: float
@@ -109,14 +119,23 @@ def _greyed(pixmap: QPixmap) -> QPixmap:
 
 
 def material_icon(
-    name: str, color: str, size: int = ICON_SIZE, disabled_color: str | None = None
+    name: str,
+    color: ColorToken | str,
+    size: int = ICON_SIZE,
+    disabled_color: ColorToken | str | None = None,
 ) -> QIcon:
-    """Icon for the bundled SVG ``name`` tinted with ``color`` (a palette token).
+    """Icon for the bundled SVG ``name`` tinted with ``color``.
+
+    ``color`` is a palette token name (``"text_muted"``), resolved each time the icon is
+    drawn so it follows a theme switch, or a fixed hex value.
 
     ``size`` is the logical size the icon is designed for (callers set the matching
     iconSize); any requested size and device pixel ratio is rendered from the SVG.
     ``disabled_color`` tints the icon in its disabled state (Qt would otherwise grey it).
     """
+    for value in (color, disabled_color):
+        if value is not None:
+            resolve_color(value)  # Fail at creation, not at the first paint.
     svg = _ICON_DIR / f"{name}.svg"
     if not svg.is_file():
         logger.warning("Icon not found: %s", svg)

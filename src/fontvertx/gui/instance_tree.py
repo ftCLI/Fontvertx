@@ -125,7 +125,7 @@ def add_action_font() -> QFont:
 
 @cache
 def _add_action_icon() -> QIcon:
-    return material_icon("add", colors().accent_text, ADD_ACTION_GLYPH)
+    return material_icon("add", "accent_text", ADD_ACTION_GLYPH)
 
 
 def add_action_rect(cell: QRect) -> QRect:
@@ -485,11 +485,10 @@ class InstanceTree(QTreeWidget):
         self._filter_text = ""
         self._hide_incompatible = False
         self._memory: dict[Path, _Memory] = {}
-        self._muted_color = QColor(colors().text_disabled)
         self._branch_icons = {
             (expanded, hovered): material_icon(
                 "expand_more" if expanded else "chevron_right",
-                colors().text if hovered else colors().text_muted,
+                "text" if hovered else "text_muted",
                 18,
             )
             for expanded in (False, True)
@@ -710,6 +709,27 @@ class InstanceTree(QTreeWidget):
         icon_hovered = icon_rect.contains(self.viewport().mapFromGlobal(QCursor.pos()))
         icon = self._branch_icons[(self.isExpanded(index), icon_hovered)]
         icon.paint(painter, icon_rect, Qt.AlignmentFlag.AlignCenter)
+
+    @property
+    def _muted_color(self) -> QColor:
+        return QColor(colors().text_disabled)
+
+    def refresh_theme(self) -> None:
+        """Re-apply the item colors set when the rows were added (after a theme switch)."""
+        muted = self._muted_color
+        location = QColor(colors().text_muted)
+        was_blocked = self.blockSignals(True)
+        for index in range(self.topLevelItemCount()):
+            item = self.topLevelItem(index)
+            if item is None:
+                continue
+            if item.data(0, _PATH_ROLE) is None:  # skipped font
+                for column in range(self.columnCount()):
+                    item.setForeground(column, muted)
+            else:
+                item.setForeground(_LOCATION_COLUMN, location)
+        self.blockSignals(was_blocked)
+        self.viewport().update()
 
     def add_skipped(self, path: Path, label: str, reason: str, info: FontInfo) -> None:
         """List a font that cannot be used, greyed out and with the reason."""

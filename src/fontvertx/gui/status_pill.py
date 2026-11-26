@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.gui.icons import material_icon
-from fontvertx.gui.styles import FOOTER_HEIGHT, colors, mono_family
+from fontvertx.gui.styles import FOOTER_HEIGHT, ColorToken, colors, mono_family, resolve_color
 from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import ElidedLabel, KeyboardPushButton, centered_icon_pixels
 from fontvertx.gui.worker import format_duration
@@ -272,10 +272,11 @@ class ConversionProgress(QProgressBar):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setRange(0, 1)
         self.setValue(0)
-        self.track = colors().running_track
-        self.fill = colors().accent
+        # Palette tokens, resolved at each paint so the bar follows a theme switch.
+        self.track: ColorToken = "running_track"
+        self.fill: ColorToken = "accent"
 
-    def set_colors(self, track: str, fill: str) -> None:
+    def set_colors(self, track: ColorToken, fill: ColorToken) -> None:
         self.track, self.fill = track, fill
         self.update()
 
@@ -292,12 +293,12 @@ class ConversionProgress(QProgressBar):
         radius = self.height() / 2
         track = QPainterPath()
         track.addRoundedRect(QRectF(self.rect()), radius, radius)
-        painter.fillPath(track, QColor(self.track))
+        painter.fillPath(track, QColor(resolve_color(self.track)))
         width = self.width() * self.fraction
         if width > 0:
             fill = QPainterPath()
             fill.addRoundedRect(QRectF(0, 0, width, self.height()), radius, radius)
-            painter.fillPath(fill.intersected(track), QColor(self.fill))
+            painter.fillPath(fill.intersected(track), QColor(resolve_color(self.fill)))
 
 
 class SegmentLabel(QWidget):
@@ -418,7 +419,7 @@ class StatusChip(QFrame):
         icon = self._icons.get(icon_name)
         if icon is None:
             icon = self._icons[icon_name] = material_icon(
-                icon_name, colors().on_primary, size=CHIP_ICON_SIZE
+                icon_name, "on_primary", size=CHIP_ICON_SIZE
             )
         self.icon.set_icon(icon)
         self.icon_name = icon_name
@@ -430,27 +431,20 @@ class StatusChip(QFrame):
             widget.style().polish(widget)
 
 
-def _tone_glyphs() -> dict[str, tuple[str, str, bool]]:
-    """Notice glyph per tone, in the current palette: (icon name, color, on a white circle)."""
-    c = colors()
-    return {
-        # Weight 600, like the step badges: weight 400 is too thin at 14px.
-        "success": ("check_wght600", c.success_icon, True),
-        "warning": ("priority_high", c.warn_fg, True),
-        "error": ("priority_high", c.danger, True),
-    }
-
-
-def _tone_text() -> dict[str, str]:
-    """Text color per tone, in the current palette."""
-    c = colors()
-    return {
-        "running": c.primary_tint_fg,
-        "success": c.success_icon,
-        "warning": c.warn_fg,
-        "error": c.danger,
-        "neutral": c.slate,
-    }
+# Notice glyph per tone: (icon name, color token, on a white circle).
+_TONE_GLYPHS = {
+    # Weight 600, like the step badges: weight 400 is too thin at 14px.
+    "success": ("check_wght600", "success_icon", True),
+    "warning": ("priority_high", "warn_fg", True),
+    "error": ("priority_high", "danger", True),
+}
+_TONE_TEXT = {
+    "running": "primary_tint_fg",
+    "success": "success_icon",
+    "warning": "warn_fg",
+    "error": "danger",
+    "neutral": "slate",
+}
 
 
 class StatusPill(QWidget):
@@ -477,7 +471,7 @@ class StatusPill(QWidget):
         self.icon = StatusIcon(RESULT_ICON_SIZE, STATUS_GLYPH_SIZE)
         self._icons = {
             key: material_icon(name, color, size=RESULT_GLYPH_SIZE if circle else 20)
-            for key, (name, color, circle) in _tone_glyphs().items()
+            for key, (name, color, circle) in _TONE_GLYPHS.items()
         }
         self.label = ElidedLabel()
         self.label.setObjectName("statusLabel")
@@ -594,7 +588,7 @@ class StatusPill(QWidget):
         self.label.setText(text if notice else "")
         self.setAccessibleDescription(f"{text}\n{detail}" if detail and detail != text else text)
         if notice and tone in self._icons:
-            circle = _tone_glyphs()[tone][2]
+            circle = _TONE_GLYPHS[tone][2]
             self.icon.set_icon(
                 self._icons[tone],
                 circle=circle,
@@ -603,9 +597,7 @@ class StatusPill(QWidget):
         self.icon.setVisible(notice and tone in self._icons)
         self.label.setVisible(notice)
         self.close_button.setVisible(notice)
-        self.close_button.setIcon(
-            material_icon("close", _tone_text().get(tone, colors().slate), size=16)
-        )
+        self.close_button.setIcon(material_icon("close", _TONE_TEXT.get(tone, "slate"), size=16))
 
         self.run_view.setVisible(active)
         if active:
@@ -630,8 +622,8 @@ class StatusPill(QWidget):
             )
             # Paused is a warning tone, amber like the card: never grey (that is CANCELLED).
             self.progress.set_colors(
-                colors().warn_fill if paused else colors().running_track,
-                colors().warn_border if paused else colors().accent,
+                "warn_fill" if paused else "running_track",
+                "warn_border" if paused else "accent",
             )
 
         self.chip.setVisible(final)
@@ -679,20 +671,20 @@ class StatusPill(QWidget):
         icon = self._icon_cache.get(key)
         if icon is None:
             icon = self._icon_cache[key] = material_icon(
-                name, color, size=ACTION_ICON_SIZE, disabled_color=colors().text_disabled
+                name, color, size=ACTION_ICON_SIZE, disabled_color="text_disabled"
             )
         return icon
 
     def _sync_action_icons(self, tone: str) -> None:
         for button, name in self._icon_names.items():
             if button.property("danger"):
-                color = colors().danger
+                color = "danger"
             elif tone == "success":
-                color = colors().success_icon
+                color = "success_icon"
             elif tone == "warning":  # warnings and the paused run
-                color = colors().warn_fg
+                color = "warn_fg"
             else:
-                color = colors().slate
+                color = "slate"
             button.setIcon(self._action_icon(name, color))
 
     def set_compact(self, compact: bool) -> None:

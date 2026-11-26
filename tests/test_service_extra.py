@@ -36,6 +36,9 @@ def test_main_builds_application_and_window(
 
     monkeypatch.setattr(entry, "QApplication", lambda argv: qapp)
     monkeypatch.setattr(entry, "ConverterWindow", FakeWindow)
+    # Keep the shared app's palette and colorSchemeChanged untouched by this fake run.
+    monkeypatch.setattr(entry, "set_palette", lambda _palette: False)
+    monkeypatch.setattr(entry, "follow_system_color_scheme", lambda _app, _window: None)
     monkeypatch.setattr(qapp, "exec", lambda: 7)
     assert entry.main() == 7
     assert created and created[0].maximized  # type: ignore[attr-defined]
@@ -50,6 +53,9 @@ def test_main_disables_combo_animation(qapp: QApplication, monkeypatch: pytest.M
 
     monkeypatch.setattr(entry, "QApplication", lambda argv: qapp)
     monkeypatch.setattr(entry, "ConverterWindow", FakeWindow)
+    # Keep the shared app's palette and colorSchemeChanged untouched by this fake run.
+    monkeypatch.setattr(entry, "set_palette", lambda _palette: False)
+    monkeypatch.setattr(entry, "follow_system_color_scheme", lambda _app, _window: None)
     monkeypatch.setattr(qapp, "exec", lambda: 0)
     original = QApplication.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo)
     QApplication.setEffectEnabled(Qt.UIEffect.UI_AnimateCombo, True)

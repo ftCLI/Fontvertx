@@ -191,8 +191,8 @@ class _SwapAnimation:
 
 def _icon(name: str, size: int, accent: bool = False) -> QIcon:
     """Dialog icon: slate by default, accent for ``add``, muted when disabled."""
-    color = colors().accent if accent else colors().slate
-    return material_icon(name, color, size, disabled_color=colors().icon_disabled)
+    color = "accent" if accent else "slate"
+    return material_icon(name, color, size, disabled_color="icon_disabled")
 
 
 def _icon_button(

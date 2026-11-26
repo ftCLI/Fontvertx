@@ -8,7 +8,14 @@ from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QStyleFactory
 
 from fontvertx.gui.app_style import AppStyle
-from fontvertx.gui.styles import MONO_FONT_FAMILY, UI_FONT_FAMILY, set_mono_family, ui_font
+from fontvertx.gui.styles import (
+    MONO_FONT_FAMILY,
+    UI_FONT_FAMILY,
+    set_mono_family,
+    set_palette,
+    ui_font,
+)
+from fontvertx.gui.theme import follow_system_color_scheme, palette_for
 from fontvertx.gui.tooltips import install_tooltip_theme
 from fontvertx.gui.window import ConverterWindow
 from fontvertx.logging_setup import setup_logging
@@ -83,14 +90,16 @@ def main() -> int:
     app.setEffectEnabled(Qt.UIEffect.UI_AnimateCombo, False)
     # Neutral cross-platform base style; the application stylesheet sits on top.
     app.setStyle(AppStyle(QStyleFactory.create("Fusion")))
-    app.styleHints().setColorScheme(Qt.ColorScheme.Light)
     app.setOrganizationName("Fontvertx")
     app.setApplicationName("Fontvertx")
     app.setWindowIcon(_app_icon())
     app.setFont(_app_font())
     set_mono_family(_mono_family())
+    # Light or dark like the system (Fusion follows the scheme too), also while running.
+    set_palette(palette_for(app.styleHints().colorScheme()))
     install_tooltip_theme(app)
     window = ConverterWindow()
+    follow_system_color_scheme(app, window)
     window.showMaximized()
     return app.exec()
 

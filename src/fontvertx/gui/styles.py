@@ -3,7 +3,7 @@
 import logging
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from functools import cache
 from pathlib import Path
 from string import Template
@@ -343,6 +343,25 @@ _active = LIGHT
 def colors() -> Palette:
     """The palette of the current theme: read it when painting, never keep its values."""
     return _active
+
+
+# A color given by name: a field of Palette, read from the current palette when used, so
+# what holds it (an icon, a progress bar) follows a theme switch by itself.
+type ColorToken = str
+_TOKENS = frozenset(field.name for field in fields(Palette))
+
+
+def is_color_token(color: str) -> bool:
+    return color in _TOKENS
+
+
+def resolve_color(color: ColorToken | str) -> str:
+    """Hex value of ``color``: a palette token, resolved in the current palette, or a hex."""
+    if color in _TOKENS:
+        return getattr(_active, color)
+    if not color.startswith("#"):
+        raise ValueError(f"Not a palette token or a hex color: {color!r}")
+    return color
 
 
 def set_palette(palette: Palette) -> bool:

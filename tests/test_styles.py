@@ -697,14 +697,18 @@ def test_mono_family_change_rebuilds_the_stylesheet(qapp: QApplication) -> None:
 
 
 def test_palette_is_read_through_colors_outside_styles() -> None:
-    """Code outside styles.py reads the current palette, so a theme switch reaches it."""
+    """Code outside styles.py reads the current palette, so a theme switch reaches it.
+
+    Only theme.py names LIGHT and DARK, to pick one for the system color scheme.
+    """
     source = Path(styles.__file__).parent.parent
     offenders = [
         f"{path.relative_to(source)}:{number}"
         for path in sorted(source.rglob("*.py"))
         if path.name != "styles.py"
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
-        if re.search(r"\bLIGHT\b", line)
+        if re.search(r"\b(LIGHT|DARK)\.", line)
+        or (path.name != "theme.py" and re.search(r"\b(LIGHT|DARK)\b", line))
     ]
     assert offenders == []
 
@@ -1119,7 +1123,7 @@ def test_paused_run_stays_amber(styled_window: ConverterWindow) -> None:
     assert not {fill, track} & grey
     # The run's action icons (View log) are amber too, like the other warning states.
     for button, name in pill._icon_names.items():
-        expected = pill._action_icon(name, LIGHT.warn_fg)
+        expected = pill._action_icon(name, "warn_fg")
         assert button.icon().cacheKey() == expected.cacheKey()
     # Resumed: back to the running colors.
     window._set_run_status(StatusState.RUNNING)

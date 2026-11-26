@@ -348,6 +348,11 @@ class ExamplePathLabel(QLabel):
     def plain_path(self) -> str:
         return self._path
 
+    def refresh_theme(self) -> None:
+        """Render again: the slashes carry their color in the HTML."""
+        self._rendered_width = -1
+        self._render_path()
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.matches(QKeySequence.StandardKey.Copy):
             self._copy_selection()
@@ -450,7 +455,7 @@ class StepBadge(QLabel):
         self._done = False
         # Weight 600: at 14px the weight-400 stroke is ~1px and antialiases to a
         # lighter green than step_check at 100%.
-        self._check = material_icon("check_wght600", colors().step_check, STEP_ICON_SIZE)
+        self._check = material_icon("check_wght600", "step_check", STEP_ICON_SIZE)
 
     def is_done(self) -> bool:
         return self._done
@@ -627,8 +632,8 @@ class ColumnMenuButton(KeyboardPushButton):
         super().__init__()
         self.setObjectName("columnMenuButton")
         self._icons = {
-            False: material_icon("view_column", colors().text_muted, COLUMN_MENU_ICON_SIZE),
-            True: material_icon("view_column", colors().accent_text, COLUMN_MENU_ICON_SIZE),
+            False: material_icon("view_column", "text_muted", COLUMN_MENU_ICON_SIZE),
+            True: material_icon("view_column", "accent_text", COLUMN_MENU_ICON_SIZE),
         }
         self.setIcon(self._icons[False])
         self.setIconSize(QSize(COLUMN_MENU_ICON_SIZE, COLUMN_MENU_ICON_SIZE))
@@ -935,9 +940,7 @@ class ConversionSelector(QWidget):
         self._index = -1
         self.combo = PopupComboBox()
         self.combo.setPlaceholderText("Choose a conversion…")
-        palette = self.combo.palette()
-        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(colors().placeholder))
-        self.combo.setPalette(palette)
+        self.refresh_theme()
         self.combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
@@ -963,6 +966,12 @@ class ConversionSelector(QWidget):
             self._index = 0
             self.combo.setCurrentIndex(self._rows[0])
         self.combo.activated.connect(self._on_activated)
+
+    def refresh_theme(self) -> None:
+        """Placeholder color of the combo: a widget palette, not reached by the style sheet."""
+        palette = self.combo.palette()
+        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(colors().placeholder))
+        self.combo.setPalette(palette)
 
     def _on_activated(self, row: int) -> None:
         if row in self._rows:
@@ -1019,7 +1028,7 @@ IMPORT_BUTTON_HEIGHT = BUTTON_HEIGHT
 
 
 def _import_icon(name: str) -> QIcon:
-    return material_icon(name, colors().accent_text, DROP_ICON_SIZE, colors().import_disabled_icon)
+    return material_icon(name, "accent_text", DROP_ICON_SIZE, "import_disabled_icon")
 
 
 def _repolish(widget: QWidget) -> None:
@@ -1290,7 +1299,6 @@ class FileTable(QTableView):
         self.column_button.setParent(self)
         self._tail_hover_row = -1
         self.setProperty("dragOver", "false")
-        self.muted_color = QColor(colors().text_disabled)
         self.verticalScrollBar().installEventFilter(self)
         # The scrollbar's container (with the filler) is raised by QAbstractScrollArea on
         # its layout passes: each time (ZOrderChange) the button goes back on top, so the
@@ -1299,6 +1307,11 @@ class FileTable(QTableView):
         if self._scrollbar_container is not None:
             self._scrollbar_container.installEventFilter(self)
         self._place_column_button()
+
+    @property
+    def muted_color(self) -> QColor:
+        """Text color of skipped fonts, in the current palette."""
+        return QColor(colors().text_disabled)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         helper = getattr(self, "_scrollbar_header", None)

@@ -29,7 +29,7 @@ from fontvertx.gui.logs import LogEntry
 from fontvertx.gui.organization_dialog import OrganizationDialog
 from fontvertx.gui.profiles import CONVERSION_GROUP_HEADINGS, CONVERSIONS
 from fontvertx.gui.scanner import ScanWorker, Source
-from fontvertx.gui.styles import UI_FONT_FAMILY, mono_family, stylesheet
+from fontvertx.gui.styles import DARK, UI_FONT_FAMILY, mono_family, stylesheet
 from fontvertx.gui.widgets import ConversionSelector, FileTable
 
 
@@ -199,8 +199,16 @@ def test_main_configures_application_and_shows_window(
         def styleHints(self) -> "FakeApplication":
             return self
 
-        def setColorScheme(self, value: object) -> None:
-            calls.append(("color_scheme", value))
+        def colorScheme(self) -> object:
+            calls.append(("color_scheme", None))
+            return main_module.Qt.ColorScheme.Dark
+
+        @property
+        def colorSchemeChanged(self) -> "FakeApplication":
+            return self
+
+        def connect(self, slot: object) -> None:
+            calls.append(("follow_scheme", slot))
 
         def setApplicationName(self, value: str) -> None:
             calls.append(("application", value))
@@ -231,6 +239,8 @@ def test_main_configures_application_and_shows_window(
     monkeypatch.setattr(main_module, "_app_font", lambda: "inter-font")
     monkeypatch.setattr(main_module, "_mono_family", lambda: "monospace")
     monkeypatch.setattr(main_module, "set_mono_family", lambda _family: None)
+    monkeypatch.setattr(main_module, "set_palette", lambda value: calls.append(("palette", value)))
+    monkeypatch.setattr(main_module, "install_tooltip_theme", lambda _app: None)
     monkeypatch.setattr(main_module, "ConverterWindow", FakeWindow)
     monkeypatch.setattr(main_module, "_set_windows_app_id", lambda: calls.append(("app_id", None)))
 
@@ -239,12 +249,14 @@ def test_main_configures_application_and_shows_window(
         "app_id",
         "argv",
         "style",
-        "color_scheme",
         "organization",
         "application",
         "icon",
         "font",
+        "color_scheme",
+        "palette",
         "window",
+        "follow_scheme",
         "show",
         "exec",
     ]
@@ -252,9 +264,10 @@ def test_main_configures_application_and_shows_window(
     style = calls[2][1]
     assert isinstance(style, AppStyle)
     assert style.baseStyle().name().casefold() == "fusion"
-    assert calls[3][1] == main_module.Qt.ColorScheme.Light
-    assert isinstance(calls[6][1], QIcon)
-    assert calls[7] == ("font", "inter-font")
+    # No forced scheme: the palette follows the system's (dark here), also later on.
+    assert calls[8] == ("palette", DARK)
+    assert isinstance(calls[5][1], QIcon)
+    assert calls[6] == ("font", "inter-font")
 
 
 def test_app_font_loads_inter_and_applies_stylistic_set(qapp: QApplication) -> None:

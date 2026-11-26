@@ -118,10 +118,8 @@ class GhostIconButton(KeyboardPushButton):
 
     def __init__(self, icon: str) -> None:
         super().__init__()
-        self._rest = material_icon(
-            icon, colors().text_muted, 16, disabled_color=colors().text_disabled
-        )
-        self._active = material_icon(icon, colors().text, 16, disabled_color=colors().text_disabled)
+        self._rest = material_icon(icon, "text_muted", 16, disabled_color="text_disabled")
+        self._active = material_icon(icon, "text", 16, disabled_color="text_disabled")
         self.setIcon(self._rest)
 
     def enterEvent(self, event: QEnterEvent) -> None:
@@ -209,7 +207,7 @@ def build_source_card(window: ConverterWindow) -> QGroupBox:
     # Replace the style's raster clear glyph with the vector one (sharp at any scale).
     clear_action = w.font_filter.findChild(QAction, "_q_qlineeditclearaction")
     if clear_action is not None:
-        clear_action.setIcon(material_icon("close", colors().text_muted, 16))
+        clear_action.setIcon(material_icon("close", "text_muted", 16))
     w.font_filter.setToolTip("Filter fonts by name, family, style, format, outlines, or UPM.")
     w.font_filter.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     w.file_options_row = QBoxLayout(QBoxLayout.Direction.LeftToRight)
