@@ -1,4 +1,4 @@
-"""Colors and Qt style sheet for the Fontvertx window ("Morbido" light theme)."""
+"""Colors and Qt style sheet for the Fontvertx window ("Morbido" light, "Ardesia" dark)."""
 
 import logging
 import os
@@ -114,6 +114,11 @@ class Palette:
     dropzone_bg_active: str
     dropzone_glyph: str
     dropzone_glyph_active: str
+    # Fills of the outcome chip, under white text.
+    chip_running_bg: str
+    chip_success_bg: str
+    chip_error_bg: str
+    chip_neutral_bg: str
 
 
 # "Morbido": white cards with a hairline border on a cool grey page, borderless
@@ -217,6 +222,119 @@ LIGHT = Palette(
     dropzone_bg_active="#e6ecf5",  # while files are dragged over it
     dropzone_glyph="#d5dce7",  # its decorative "Aa"
     dropzone_glyph_active="#b7c6dd",
+    chip_running_bg="#2f5da8",
+    chip_success_bg="#1f7a4d",
+    chip_error_bg="#8f1d24",
+    chip_neutral_bg="#1e2030",
+)
+
+# "Ardesia" (slate): the dark theme of the "Fontvertx - dark mode" design canvas
+# (docs/design/dark-mode, palette "slate"). Cards a step lighter than the page, a brighter
+# blue for accent marks and a light blue for accent text on tints. Errors, warnings and a
+# paused run share one amber.
+DARK = Palette(
+    page="#12141b",
+    surface="#1b1e27",
+    field="#252935",
+    field_hover="#2c3140",
+    list_bg="#1b1e27",
+    list_alt="#1f222c",
+    button="#272b37",
+    button_hover="#2f3442",
+    button_pressed="#373c4b",
+    disabled_bg="#20232d",
+    border="#2a2e3b",
+    border_strong="#353a48",
+    border_hover="#4a5063",
+    indicator_border="#6b7187",
+    accent="#4f7fd6",
+    accent_tint="#22304b",
+    accent_tint_hover="#2a3a5a",
+    accent_hover="#6690dc",
+    control_border_off="#6b7187",
+    control_border_hover="#8a90a6",
+    text="#e4e7ef",
+    text_title="#e4e7ef",
+    text_secondary="#e4e7ef",
+    text_muted="#9ba2b6",
+    text_disabled="#5f6579",
+    primary="#3e6cc0",
+    primary_hover="#4672c4",
+    on_primary="#ffffff",
+    primary_disabled="#2e3b56",
+    primary_disabled_text="#9ba2b6",
+    footer_disabled_bg="#232a3a",
+    accent_text="#a3bff2",
+    selection_bg="#22314f",
+    selection_text="#e4e7ef",
+    text_selection_bg="#2f4570",
+    tree_selection_bg="#22314f",
+    progress_track="#2a2e3b",
+    danger="#f2c47c",
+    success="#86d9a8",
+    primary_tint_bg="#22304b",
+    primary_tint_fg="#a3bff2",
+    running_track="#283654",
+    example_selection="#2f4570",
+    success_bg="#13261d",
+    success_fg="#86d9a8",
+    success_border="#22503a",
+    success_btn_border="#2f6e4e",
+    success_icon="#7dd3a0",
+    step_check="#7dd3a0",  # completed-step badge check
+    warn_bg="#2a2213",
+    warn_fill="#3a2e16",
+    warn_border="#7a5d27",
+    warn_fg="#f2c47c",
+    warn_accent="#946618",
+    badge_bg="#2c3140",
+    badge_muted="#252935",
+    table_header="#20232d",
+    danger_bg="#2a2213",
+    danger_border="#7a5d27",
+    zebra="#20232d",
+    row_hover="#222530",
+    row_selected_a="#22314f",
+    row_separator="#252935",
+    row_selection="#22314f",
+    row_selection_inactive="#262a35",
+    accent_border_soft="#34497a",
+    control_border_strong="#5f6579",
+    accent_pressed="#345ca6",
+    import_disabled_bg="#20232d",
+    import_disabled_border="#20232d",
+    import_disabled_text="#5f6579",
+    import_disabled_icon="#5f6579",
+    placeholder="#9ba2b6",
+    text_dim="#9ba2b6",
+    fill_dim="#2a2e3b",
+    border_dim="#4a5063",
+    checkbox_disabled_border="#3e4352",
+    border_faint="#2a2e3b",
+    badge_idle_border="#2a2e3b",
+    convert_disabled_text="#5e6d92",
+    warn_panel_bg="#2a2213",  # active "Overwrite existing files" card
+    warn_panel_border="#7a5d27",
+    popup_border="#353a48",
+    header_group="#9ba2b6",
+    slate="#e4e7ef",
+    ghost_hover="#272b37",
+    ghost_pressed="#2f3442",
+    icon_disabled="#5f6579",
+    path_text="#e4e7ef",
+    scroll_handle="#3a3f4f",
+    scroll_handle_hover="#4a5063",
+    scroll_handle_pressed="#5a6175",
+    tooltip_bg="#3a3f4f",
+    tooltip_text="#e4e7ef",
+    dropzone_bg="#181b23",  # empty drop zone
+    dropzone_bg_active="#22304b",  # while files are dragged over it
+    dropzone_glyph="#2b2f3c",  # its decorative "Aa"
+    dropzone_glyph_active="#33466c",
+    chip_running_bg="#3e6cc0",
+    chip_success_bg="#27784f",
+    chip_error_bg="#946618",  # = warn_accent: one amber
+    chip_neutral_bg="#4a5063",
 )
 
 _active = LIGHT
@@ -386,7 +504,7 @@ QFrame#dropZone QLabel#formatChip {
     padding: 3px 8px;  /* 19px tall: the 9px pill radius still fits (half height) */
 }
 QLabel#formatChip {
-    color: $accent;
+    color: $accent_text;
     background: $accent_tint;
     border: none;
     border-radius: $radius_full_chip;
@@ -477,14 +595,14 @@ QWidget#resultCounts {
     font-weight: $footer_status_weight;
 }
 QFrame#statusChip {
-    background: $slate;
+    background: $chip_neutral_bg;
     border: none;
     border-radius: $radius_status_chip;
 }
-QFrame#statusChip[tone="success"] { background: $success_icon; }
-QFrame#statusChip[tone="error"] { background: $danger; }
+QFrame#statusChip[tone="success"] { background: $chip_success_bg; }
+QFrame#statusChip[tone="error"] { background: $chip_error_bg; }
 QFrame#statusChip[tone="warning"] { background: $warn_accent; }
-QFrame#statusChip[tone="running"] { background: $accent; }
+QFrame#statusChip[tone="running"] { background: $chip_running_bg; }
 QLabel#statusChipText {
     color: $on_primary;
     background: transparent;
@@ -653,7 +771,7 @@ QLabel#footerSummary {
     font-weight: $footer_status_weight;
 }
 QPushButton#footerHistory {
-    color: $accent;
+    color: $accent_text;
     background: transparent;
     border: none;
     padding: 0;
@@ -728,7 +846,7 @@ QLabel#examplePath[previewContext="dialog"] {
 }
 QLabel#organizationLevelNumber,
 QLabel#cardNumber {
-    color: $accent;
+    color: $accent_text;
     background: $accent_tint;
     border: none;
     border-radius: $radius_full_badge;
@@ -757,7 +875,7 @@ QLabel#cardNumber[state="muted"] {
     background: $badge_muted;
 }
 QLabel#modifiedChip {
-    color: $accent;
+    color: $accent_text;
     background: $accent_tint;
     border: none;
     border-radius: $radius_full_chip;
@@ -1074,7 +1192,7 @@ QPushButton#importButton:pressed:enabled, QPushButton#importButton:open {
 }
 QPushButton#importButton[emphasis="true"] {
     background: $accent_tint;
-    color: $accent;
+    color: $accent_text;
     font-weight: 600;
 }
 QPushButton#importButton[emphasis="true"]:hover:enabled {

@@ -31,7 +31,7 @@ from fontvertx.gui import window as window_module
 from fontvertx.gui.file_list import FontFileList, FontRowDelegate
 from fontvertx.gui.instance_tree import InstanceTree
 from fontvertx.gui.status_pill import StatusState
-from fontvertx.gui.styles import LIGHT, build_stylesheet
+from fontvertx.gui.styles import DARK, LIGHT, Palette, build_stylesheet
 from fontvertx.gui.widgets import FileTable
 from fontvertx.gui.window import ConverterWindow
 from fontvertx.inspection import FontInfo, NamedInstanceInfo
@@ -47,8 +47,12 @@ def icon_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return directory
 
 
-def test_palette_values_are_hex_colors() -> None:
-    for name, value in vars(LIGHT).items():
+PALETTES = pytest.mark.parametrize("palette", [LIGHT, DARK], ids=["light", "dark"])
+
+
+@PALETTES
+def test_palette_values_are_hex_colors(palette: Palette) -> None:
+    for name, value in vars(palette).items():
         assert HEX.match(value), f"{name}={value}"
 
 
@@ -72,6 +76,72 @@ def test_hint_text_contrast_on_page_and_cards() -> None:
             assert _contrast(foreground, background) >= 4.5
     for background in (LIGHT.surface, LIGHT.page, LIGHT.accent_tint, LIGHT.field):
         assert _contrast(LIGHT.text_muted, background) >= 4.5
+
+
+@PALETTES
+def test_text_contrast_on_every_background(palette: Palette) -> None:
+    for name in (
+        "page",
+        "surface",
+        "field",
+        "field_hover",
+        "accent_tint",
+        "table_header",
+        "disabled_bg",
+    ):
+        ratio = _contrast(palette.text, getattr(palette, name))
+        assert ratio >= 4.5, f"text on {name}: {ratio:.2f}"
+    for name in ("accent_tint", "surface"):
+        ratio = _contrast(palette.accent_text, getattr(palette, name))
+        assert ratio >= 4.5, f"accent_text on {name}: {ratio:.2f}"
+
+
+@PALETTES
+def test_white_text_contrast_on_filled_controls_and_chips(palette: Palette) -> None:
+    for name in (
+        "primary",
+        "primary_hover",
+        "accent_pressed",
+        "chip_running_bg",
+        "chip_success_bg",
+        "chip_error_bg",
+        "chip_neutral_bg",
+        "warn_accent",
+    ):
+        ratio = _contrast(palette.on_primary, getattr(palette, name))
+        assert ratio >= 4.5, f"on_primary on {name}: {ratio:.2f}"
+
+
+@PALETTES
+def test_non_text_marks_contrast(palette: Palette) -> None:
+    # WCAG 1.4.11: checked fills, focus rings and unchecked borders need 3:1.
+    for name in ("accent", "control_border_off"):
+        ratio = _contrast(getattr(palette, name), palette.surface)
+        assert ratio >= 3, f"{name} on surface: {ratio:.2f}"
+
+
+def test_dark_errors_warnings_and_pause_share_one_amber() -> None:
+    assert DARK.danger == DARK.warn_fg
+    assert DARK.chip_error_bg == DARK.warn_accent
+    assert DARK.danger_bg == DARK.warn_bg
+    assert DARK.danger_border == DARK.warn_border
+    # The paused bar's border shows on its fill at least as much as in the light theme.
+    assert _contrast(DARK.warn_border, DARK.warn_fill) >= 2.0
+    assert _contrast(LIGHT.warn_border, LIGHT.warn_fill) >= 2.0
+    # The checked Overwrite box and the UPM mark: amber on the card.
+    assert _contrast(DARK.warn_accent, DARK.surface) >= 3
+
+
+def test_dark_keeps_disabled_convert_deliberately_dim() -> None:
+    ratio = _contrast(DARK.convert_disabled_text, DARK.footer_disabled_bg)
+    assert 2.5 <= ratio <= 3
+
+
+def test_light_chip_fills_match_their_former_tokens() -> None:
+    assert LIGHT.chip_running_bg == LIGHT.accent
+    assert LIGHT.chip_success_bg == LIGHT.success_icon
+    assert LIGHT.chip_error_bg == LIGHT.danger
+    assert LIGHT.chip_neutral_bg == LIGHT.slate
 
 
 def test_accent_contrast() -> None:
@@ -314,6 +384,13 @@ def test_state_and_badge_text_meets_contrast_requirement() -> None:
     )
     for foreground, background in pairs:
         assert _contrast(foreground, background) >= 4.5
+
+
+def test_dark_stylesheet_has_no_unresolved_tokens(icon_dir: Path) -> None:
+    sheet = build_stylesheet(DARK)
+    assert not re.search(r"\$[a-z_]+", sheet)
+    assert DARK.page in sheet
+    assert f"expand_more_{DARK.text_muted[1:]}.svg" in sheet
 
 
 def test_stylesheet_has_no_unresolved_tokens(icon_dir: Path) -> None:

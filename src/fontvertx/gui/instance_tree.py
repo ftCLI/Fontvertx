@@ -125,7 +125,7 @@ def add_action_font() -> QFont:
 
 @cache
 def _add_action_icon() -> QIcon:
-    return material_icon("add", colors().accent, ADD_ACTION_GLYPH)
+    return material_icon("add", colors().accent_text, ADD_ACTION_GLYPH)
 
 
 def add_action_rect(cell: QRect) -> QRect:
@@ -178,7 +178,7 @@ def paint_add_action(painter: QPainter, rect: QRect, *, ghost: bool, pressed: bo
     )
     _add_action_icon().paint(painter, glyph, Qt.AlignmentFlag.AlignCenter)
     painter.setFont(add_action_font())
-    painter.setPen(QColor(colors().accent))
+    painter.setPen(QColor(colors().accent_text))
     label = QRect(glyph.right() + 1 + ADD_ACTION_GLYPH_GAP, rect.top(), rect.width(), rect.height())
     painter.drawText(
         label, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, ADD_ACTION_LABEL

@@ -412,7 +412,7 @@ class FontBadgeDelegate(FontRowDelegate):
 
         # Format chips: monospaced, pill-shaped, accent on tint.
         background = QColor(colors().accent_tint)
-        foreground = QColor(colors().accent)
+        foreground = QColor(colors().accent_text)
         font = chip_font()
         metrics = QFontMetrics(font)
         max_text_width = max(0, option.rect.width() - 20)

@@ -628,7 +628,7 @@ class ColumnMenuButton(KeyboardPushButton):
         self.setObjectName("columnMenuButton")
         self._icons = {
             False: material_icon("view_column", colors().text_muted, COLUMN_MENU_ICON_SIZE),
-            True: material_icon("view_column", colors().accent, COLUMN_MENU_ICON_SIZE),
+            True: material_icon("view_column", colors().accent_text, COLUMN_MENU_ICON_SIZE),
         }
         self.setIcon(self._icons[False])
         self.setIconSize(QSize(COLUMN_MENU_ICON_SIZE, COLUMN_MENU_ICON_SIZE))
@@ -1019,7 +1019,7 @@ IMPORT_BUTTON_HEIGHT = BUTTON_HEIGHT
 
 
 def _import_icon(name: str) -> QIcon:
-    return material_icon(name, colors().accent, DROP_ICON_SIZE, colors().import_disabled_icon)
+    return material_icon(name, colors().accent_text, DROP_ICON_SIZE, colors().import_disabled_icon)
 
 
 def _repolish(widget: QWidget) -> None:

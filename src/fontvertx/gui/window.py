@@ -326,7 +326,7 @@ class ConverterWindow(QMainWindow):
         self.summary.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.history_button = KeyboardPushButton("View log")
         self.history_button.setObjectName("footerHistory")
-        self.history_button.setIcon(material_icon("visibility", colors().accent, size=16))
+        self.history_button.setIcon(material_icon("visibility", colors().accent_text, size=16))
         self.history_button.setIconSize(QSize(16, 16))
         self.history_button.hide()
         self.summary_zone = QWidget()

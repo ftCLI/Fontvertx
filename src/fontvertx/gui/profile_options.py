@@ -83,7 +83,7 @@ class _EmptyStateIcon(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setFixedSize(EMPTY_ICON_CIRCLE, EMPTY_ICON_CIRCLE)
-        self._icon = material_icon("tune", colors().accent, EMPTY_ICON_GLYPH)
+        self._icon = material_icon("tune", colors().accent_text, EMPTY_ICON_GLYPH)
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
