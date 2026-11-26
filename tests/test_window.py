@@ -751,6 +751,14 @@ def test_column_button_sits_in_the_header_corner(
         # The button goes back on top on the event-loop pass after the scrollbar shows.
         QTest.qWait(30)
         assert bar.isVisible() == (rows > 1)
+        # The viewport makes room for the scrollbar on a later layout pass, which a slow
+        # machine may not have run yet: wait for it rather than for a fixed time.
+        room = files.contentsRect().width() - (bar.width() if bar.isVisible() else 0)
+        for _ in range(100):
+            if viewport.width() == room:
+                break
+            QTest.qWait(10)
+        assert viewport.width() == room
         # The corner: 32px whatever the scrollbar, as tall as the header, against the
         # table's inner right edge; it also covers the band above the scrollbar.
         geometry = button.geometry()
