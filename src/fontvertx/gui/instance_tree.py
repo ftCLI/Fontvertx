@@ -27,6 +27,7 @@ from PySide6.QtGui import (
     QFontMetrics,
     QHelpEvent,
     QIcon,
+    QKeyEvent,
     QKeySequence,
     QMouseEvent,
     QPainter,
@@ -84,7 +85,10 @@ _AXES_ROLE = Qt.ItemDataRole.UserRole + 3
 _OUTLINES_ROLE = Qt.ItemDataRole.UserRole + 4
 # Extra text the filter searches besides the cells: the font path, a skipped row's reason.
 _SEARCH_ROLE = Qt.ItemDataRole.UserRole + 5
+_FORMAT_COLUMN = 1
 _LOCATION_COLUMN = 4
+# Chip in the Format cell of a custom instance row.
+CUSTOM_CHIP_LABEL = "Custom"
 _UPM_ALIGNMENT = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
 # The list is edge to edge: nudge the branch chevron right, away from the card edge.
 BRANCH_ICON_OFFSET = 5
@@ -95,6 +99,8 @@ LOCATION_MAX_WIDTH = 360
 # "+ Instance": the inline action painted in the Location cell of a variable font row.
 ADD_ACTION_LABEL = "Instance"
 ADD_ACTION_TOOLTIP = "Add custom instance (Ins)"
+# On every cell of a custom instance row (its "Custom" chip included), and nowhere else.
+CUSTOM_INSTANCE_TOOLTIP = "Double-click or press Enter to edit. Delete to remove."
 ADD_ACTION_HEIGHT = 22
 ADD_ACTION_INSET = 6  # from the left edge of the cell
 ADD_ACTION_PADDING_LEFT = 6
@@ -180,6 +186,18 @@ def paint_add_action(painter: QPainter, rect: QRect, *, ghost: bool, pressed: bo
     painter.restore()
 
 
+def _is_custom_instance(index: QModelIndex | QPersistentModelIndex) -> bool:
+    if not index.isValid() or not index.parent().isValid():
+        return False
+    return bool(index.sibling(index.row(), 0).data(_CUSTOM_ROLE))
+
+
+# Row types of the tree (see InstanceTree.row_kind).
+ROW_FONT = "font"
+ROW_CUSTOM = "custom"
+ROW_INSTANCE = "instance"  # a named or default instance
+
+
 class InstanceRowDelegate(FontRowDelegate):
     def sizeHint(
         self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
@@ -251,6 +269,14 @@ class InstanceRowDelegate(FontRowDelegate):
 
 class InstanceBadgeDelegate(InstanceRowDelegate, FontBadgeDelegate):
     paint = FontBadgeDelegate.paint
+
+    def initStyleOption(
+        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> None:
+        super().initStyleOption(option, index)
+        # Painted only: the cell itself stays empty, so sorting and filtering ignore it.
+        if index.column() == _FORMAT_COLUMN and _is_custom_instance(index):
+            option.text = CUSTOM_CHIP_LABEL
 
 
 def _number(value: float) -> str:
@@ -794,6 +820,9 @@ class InstanceTree(QTreeWidget):
         child.setData(0, _SPEC_ROLE, spec)
         child.setData(0, _CUSTOM_ROLE, custom)
         child.setFont(_LOCATION_COLUMN, tabular_font())
+        if custom:
+            for column in range(self.columnCount()):
+                child.setToolTip(column, CUSTOM_INSTANCE_TOOLTIP)
         parent.addChild(child)
         return child
 
@@ -1064,9 +1093,39 @@ class InstanceTree(QTreeWidget):
         self.set_filter(self._filter_text)
         self.checksChanged.emit()
 
+    @staticmethod
+    def row_kind(item: QTreeWidgetItem | None) -> str | None:
+        """ROW_FONT, ROW_CUSTOM, ROW_INSTANCE, or None for a skipped font (or no row)."""
+        if item is None:
+            return None
+        if item.parent() is None:
+            return ROW_FONT if item.data(0, _PATH_ROLE) is not None else None
+        return ROW_CUSTOM if item.data(0, _CUSTOM_ROLE) else ROW_INSTANCE
+
     def _on_item_double_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
-        if item.data(0, _CUSTOM_ROLE):
+        # A font row expands or collapses (QTreeView's expandsOnDoubleClick).
+        if self.row_kind(item) == ROW_CUSTOM:
             self.setCurrentItem(item)
+            self.edit_custom()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (
+            event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier
+        ):
+            self._activate_current()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _activate_current(self) -> None:
+        """Enter: a font expands or collapses, a custom instance opens Edit, others nothing."""
+        item = self.currentItem()
+        kind = self.row_kind(item)
+        if item is None:
+            return
+        if kind == ROW_FONT:
+            item.setExpanded(not item.isExpanded())
+        elif kind == ROW_CUSTOM:
             self.edit_custom()
 
     def remove_custom(self) -> None:
@@ -1087,20 +1146,24 @@ class InstanceTree(QTreeWidget):
         if item is None:
             return
         self.setCurrentItem(item)
+        # Only the actions that apply to the row; named and default instances have none.
+        kind = self.row_kind(item)
+        if kind == ROW_FONT:
+            entries = [("Add custom instance…", self.add_custom)]
+        elif kind == ROW_CUSTOM:
+            entries = [
+                ("Edit custom instance…", self.edit_custom),
+                ("Remove instance", self.remove_custom),
+            ]
+        else:
+            return
         menu = QMenu(self)
-        add = menu.addAction("Add custom instance…")
-        add.setEnabled(self.can_add())
-        edit = menu.addAction("Edit custom instance…")
-        edit.setEnabled(self.can_remove())
-        remove = menu.addAction("Remove instance")
-        remove.setEnabled(self.can_remove())
+        actions = [(menu.addAction(label), handler) for label, handler in entries]
         chosen = menu.exec(self.viewport().mapToGlobal(position))
-        if chosen is add:
-            self.add_custom()
-        elif chosen is edit:
-            self.edit_custom()
-        elif chosen is remove:
-            self.remove_custom()
+        for action, handler in actions:
+            if chosen is action:
+                handler()
+                break
 
     def _show_current_menu(self) -> None:
         item = self.currentItem()

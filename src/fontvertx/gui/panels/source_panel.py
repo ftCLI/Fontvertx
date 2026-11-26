@@ -44,7 +44,6 @@ from fontvertx.gui.styles import (
     SCAN_LABEL_PIXEL_SIZE,
     mono_font,
 )
-from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import (
     IMPORT_BUTTON_HEIGHT,
     DropZone,
@@ -227,9 +226,7 @@ def build_source_card(window: ConverterWindow) -> QGroupBox:
     w.file_list = FontFileList(w.files, w._compatibility_profile)
     w.column_menu = QMenu(w.files)
     table_header = w.files.horizontalHeader()
-    table_header.setToolTip(
-        "Click to sort; right-click or use the button on the right to choose columns."
-    )
+    table_header.setToolTip("Click to sort.")
     table_header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     table_header.customContextMenuRequested.connect(w._show_column_menu)
     w.files.column_button.attach_menu(w.column_menu, w.files)
@@ -256,19 +253,12 @@ def build_source_card(window: ConverterWindow) -> QGroupBox:
     w.file_list.scan_finished.connect(w._on_scan_finished)
     w.file_list.scan_failed.connect(w._on_scan_failed)
     w.files.setMinimumHeight(150)
-    w.files.setToolTip("Check the fonts to convert. Click a column header to sort.")
     w.file_list.model.dataChanged.connect(w._on_file_item_changed)
     w.instance_tree = InstanceTree()
     w.font_filter.textChanged.connect(w.instance_tree.set_filter)
     w.font_filter.textChanged.connect(w.file_list.proxy.setFilterFixedString)
     w.font_filter.textChanged.connect(w._update_buttons)
     w.instance_tree.setMinimumHeight(150)
-    w.instance_tree.setToolTip(
-        wrap_tip(
-            "Check instances to export. Double-click a custom instance to edit it; "
-            "right-click it or press Shift+F10 for actions, or Delete to remove it."
-        )
-    )
     w.instance_tree.checksChanged.connect(w._update_buttons)
     w.expand_instances_button.clicked.connect(w.instance_tree.expandAll)
     w.collapse_instances_button.clicked.connect(w.instance_tree.collapseAll)

@@ -540,44 +540,166 @@ def test_remove_custom_instance(tree: InstanceTree, monkeypatch: pytest.MonkeyPa
     assert actions
 
 
-def test_context_menu_actions(tree: InstanceTree, monkeypatch: pytest.MonkeyPatch) -> None:
+class FakeMenu:
+    """Stands in for QMenu: records the labels and returns the ``choice`` action."""
+
+    shown: list[list[str]] = []
+    choice: int | None = None
+
+    def __init__(self, parent: Any) -> None:
+        self.labels: list[str] = []
+        self.actions: list[object] = []
+
+    def addAction(self, text: str) -> Any:
+        action = object()
+        self.labels.append(text)
+        self.actions.append(action)
+        return action
+
+    def exec(self, pos: Any) -> Any:
+        FakeMenu.shown.append(self.labels)
+        return None if FakeMenu.choice is None else self.actions[FakeMenu.choice]
+
+
+@pytest.fixture
+def fake_menu(monkeypatch: pytest.MonkeyPatch) -> type[FakeMenu]:
+    FakeMenu.shown = []
+    FakeMenu.choice = None
+    monkeypatch.setattr(tree_module, "QMenu", FakeMenu)
+    return FakeMenu
+
+
+def _tree_with_custom(tree: InstanceTree, monkeypatch: pytest.MonkeyPatch) -> QTreeWidgetItem:
+    """Add one custom instance (font.child(2)) and show the expanded tree."""
+    stub_dialog(monkeypatch, accepted=True)
+    font = tree.topLevelItem(0)
+    tree.setCurrentItem(font)
+    tree.add_custom()
+    tree.expandAll()
+    tree.show()
+    QApplication.processEvents()
+    return font
+
+
+def test_context_menu_shows_only_the_row_actions(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, fake_menu: type[FakeMenu]
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    named, custom = font.child(0), font.child(2)
     calls: list[str] = []
     monkeypatch.setattr(tree, "add_custom", lambda: calls.append("add"))
     monkeypatch.setattr(tree, "edit_custom", lambda: calls.append("edit"))
     monkeypatch.setattr(tree, "remove_custom", lambda: calls.append("remove"))
-    tree.expandAll()
-    tree.show()
-    point = tree.visualItemRect(tree.topLevelItem(0)).center()
-    choice: list[int | None] = [None]
 
-    class FakeMenu:
-        def __init__(self, parent: Any) -> None:
-            self.actions: list[object] = []
+    def point(item: QTreeWidgetItem) -> QPoint:
+        return tree.visualItemRect(item).center()
 
-        def addAction(self, text: str) -> Any:
-            action = FakeAction()
-            self.actions.append(action)
-            return action
+    tree._show_menu(point(font))
+    tree._show_menu(point(custom))
+    tree._show_menu(point(named))
+    assert fake_menu.shown == [
+        ["Add custom instance…"],
+        ["Edit custom instance…", "Remove instance"],
+    ]
+    assert calls == []
 
-        def exec(self, pos: Any) -> Any:
-            return None if choice[0] is None else self.actions[choice[0]]
-
-    class FakeAction:
-        def setEnabled(self, enabled: bool) -> None:
-            pass
-
-    monkeypatch.setattr(tree_module, "QMenu", FakeMenu)
-
-    for index, expected in enumerate(("add", "edit", "remove")):
-        choice[0] = index
-        tree._show_menu(point)
+    for item, choice, expected in (
+        (font, 0, "add"),
+        (custom, 0, "edit"),
+        (custom, 1, "remove"),
+    ):
+        fake_menu.choice = choice
+        tree._show_menu(point(item))
         assert calls[-1] == expected
-
-    choice[0] = None
-    tree._show_menu(point)
     assert len(calls) == 3
+
     tree._show_menu(tree.viewport().rect().bottomRight())
     assert len(calls) == 3
+
+
+def test_keyboard_context_menu_matches_the_row(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, fake_menu: type[FakeMenu]
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    tree.setFocus()
+    for item in (font, font.child(2), font.child(0)):
+        tree.setCurrentItem(item)
+        QTest.keyClick(tree, Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)
+    assert fake_menu.shown == [
+        ["Add custom instance…"],
+        ["Edit custom instance…", "Remove instance"],
+    ]
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+def test_enter_acts_on_each_row_type(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, key: Qt.Key
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    edits: list[QTreeWidgetItem | None] = []
+    monkeypatch.setattr(tree, "edit_custom", lambda: edits.append(tree.currentItem()))
+    tree.setFocus()
+
+    tree.setCurrentItem(font)
+    QTest.keyClick(tree, key)
+    assert not font.isExpanded()
+    QTest.keyClick(tree, key)
+    assert font.isExpanded()
+    assert edits == []
+
+    named = font.child(0)
+    tree.setCurrentItem(named)
+    QTest.keyClick(tree, key)
+    assert edits == []
+    assert font.isExpanded()
+    assert tree.currentItem() is named
+
+    custom = font.child(2)
+    tree.setCurrentItem(custom)
+    QTest.keyClick(tree, key)
+    assert edits == [custom]
+
+
+def test_double_click_acts_on_each_row_type(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    edits: list[QTreeWidgetItem | None] = []
+    monkeypatch.setattr(tree, "edit_custom", lambda: edits.append(tree.currentItem()))
+
+    tree.itemDoubleClicked.emit(font.child(0), 0)
+    assert edits == []
+    tree.itemDoubleClicked.emit(font.child(2), 0)
+    assert edits == [font.child(2)]
+    tree.itemDoubleClicked.emit(font, 0)
+    assert edits == [font.child(2)]
+    assert tree.expandsOnDoubleClick()
+
+
+def test_custom_chip_on_custom_instances_only(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    column = tree_module._FORMAT_COLUMN
+    delegate = tree.itemDelegateForColumn(column)
+    assert isinstance(delegate, tree_module.InstanceBadgeDelegate)
+
+    def chip(item: QTreeWidgetItem) -> str:
+        option = QStyleOptionViewItem()
+        delegate.initStyleOption(option, tree.indexFromItem(item, column))
+        return option.text
+
+    assert chip(font) == "SFNT"
+    assert chip(font.child(0)) == ""
+    assert chip(font.child(1)) == ""
+    assert chip(font.child(2)) == tree_module.CUSTOM_CHIP_LABEL
+    # Painted only: the cell stays empty, so the filter and sorting ignore it.
+    assert font.child(2).text(column) == ""
+    tree.set_filter("custom")
+    assert not font.child(2).isHidden()
+    assert font.child(0).isHidden()
+    tree.set_filter("")
+    assert tree.grab().toImage().width() > 0
 
 
 def test_keyboard_context_menu_opens_for_selected_instance(
