@@ -430,20 +430,39 @@ class CustomInstanceDialog(QDialog):
 
 
 class _InstanceItem(QTreeWidgetItem):
-    """An instance row. Sorting the tree orders the fonts only: under each font the rows
-    keep the font's order (its named instances, then the custom ones as they were added),
-    whatever the sort column and direction."""
+    """An instance row. Sorting the tree orders the fonts; under each font the named
+    instances always come first, in the font's order. Custom instances follow: sorted by
+    their location (in the sort direction) when the tree is sorted by Location, otherwise
+    in the order they were added."""
 
     def __lt__(self, other: QTreeWidgetItem) -> bool:
         tree = self.treeWidget()
-        mine, theirs = self.data(0, _ORDER_ROLE), other.data(0, _ORDER_ROLE)
-        if tree is None or mine is None or theirs is None:
+        if tree is None or self.data(0, _ORDER_ROLE) is None or other.data(0, _ORDER_ROLE) is None:
             return super().__lt__(other)
-        # A descending sort asks "other < self" to put self first: answer it the other way
-        # round, so the rows come out in the same order.
-        if tree.header().sortIndicatorOrder() == Qt.SortOrder.DescendingOrder:
-            return mine > theirs
-        return mine < theirs
+        header = tree.header()
+        ascending = header.sortIndicatorOrder() == Qt.SortOrder.AscendingOrder
+        by_location = header.sortIndicatorSection() == _LOCATION_COLUMN
+        # Qt puts self first when self < other (ascending) or other < self (descending):
+        # answer with the order the rows should have on screen.
+        if ascending:
+            return self._shown_before(other, ascending, by_location)
+        return _InstanceItem._shown_before(other, self, ascending, by_location)
+
+    def _shown_before(self, other: QTreeWidgetItem, ascending: bool, by_location: bool) -> bool:
+        custom, other_custom = bool(self.data(0, _CUSTOM_ROLE)), bool(other.data(0, _CUSTOM_ROLE))
+        if custom != other_custom:
+            return not custom  # named instances first
+        if custom and by_location:
+            mine = _location_key(self.data(0, _SPEC_ROLE))
+            theirs = _location_key(other.data(0, _SPEC_ROLE))
+            if mine != theirs:
+                return mine < theirs if ascending else mine > theirs
+        return self.data(0, _ORDER_ROLE) < other.data(0, _ORDER_ROLE)
+
+
+def _location_key(spec: InstanceSpec) -> tuple[float, ...]:
+    """Axis values in axis order: compared as numbers, so 150 sorts before 1000."""
+    return tuple(value for _tag, value in spec.coordinates)
 
 
 class InstanceTree(QTreeWidget):

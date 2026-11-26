@@ -415,16 +415,17 @@ def test_add_custom_instance_selects_and_remembers_it(
     assert child_names(tree) == ["Regular", "Bold", "Custom instance"]
 
 
-def test_instances_keep_the_font_order_when_the_tree_is_sorted(
+def test_instance_order_under_a_sorted_tree(
     qapp: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Sorting orders the fonts; under each font, named instances keep the font's order
-    and custom ones follow in the order they were added, for any sort column or direction."""
+    """Sorting orders the fonts. Under each font the named instances come first, in the
+    font's order; custom ones follow, sorted by location when the tree is sorted by
+    Location (in its direction), otherwise in the order they were added."""
     sorted_tree = InstanceTree()  # sorting on, as in the window
     assert sorted_tree.isSortingEnabled()
     sorted_tree.add_font(FONT_PATH, "Var", variable_info())
     sorted_tree.add_font(Path("Another.ttf"), "Another", variable_info(Path("Another.ttf")))
-    values = iter([555, 150])
+    values = iter([555, 150, 800])
 
     def fake_exec(self: CustomInstanceDialog) -> int:
         self._boxes["wght"].setValue(next(values))
@@ -436,32 +437,33 @@ def test_instances_keep_the_font_order_when_the_tree_is_sorted(
         for i in range(sorted_tree.topLevelItemCount())
         if sorted_tree.topLevelItem(i).text(0) == "Var"
     )
-    for _ in range(2):
+    for _ in range(3):
         sorted_tree.setCurrentItem(font)
         sorted_tree.add_custom()
 
     def rows() -> list[tuple[str, str]]:
         return [(font.child(i).text(0), font.child(i).text(4)) for i in range(font.childCount())]
 
-    expected = [
-        (name, location_text((("wght", weight), ("wdth", 100))))
-        for name, weight in (
-            ("Regular", 400),
-            ("Bold", 700),
-            ("Custom instance", 555),
-            ("Custom instance", 150),
-        )
-    ]
-    assert rows() == expected
-    for column, order in (
-        (0, Qt.SortOrder.DescendingOrder),
-        (4, Qt.SortOrder.AscendingOrder),
-        (4, Qt.SortOrder.DescendingOrder),
-        (0, Qt.SortOrder.AscendingOrder),
+    def expected(*custom_weights: int) -> list[tuple[str, str]]:
+        named = [("Regular", 400), ("Bold", 700)]
+        custom = [("Custom instance", weight) for weight in custom_weights]
+        return [
+            (name, location_text((("wght", weight), ("wdth", 100))))
+            for name, weight in named + custom
+        ]
+
+    added = expected(555, 150, 800)
+    assert rows() == added
+    for column, order, result in (
+        (0, Qt.SortOrder.DescendingOrder, added),
+        (4, Qt.SortOrder.AscendingOrder, expected(150, 555, 800)),
+        (4, Qt.SortOrder.DescendingOrder, expected(800, 555, 150)),
+        (1, Qt.SortOrder.AscendingOrder, added),
+        (0, Qt.SortOrder.AscendingOrder, added),
     ):
         sorted_tree.sortByColumn(column, order)
-        assert rows() == expected, (column, order)
-    # The fonts themselves still follow the sort.
+        assert rows() == result, (column, order)
+    # The fonts themselves follow the sort.
     sorted_tree.sortByColumn(0, Qt.SortOrder.DescendingOrder)
     assert [sorted_tree.topLevelItem(i).text(0) for i in range(2)] == ["Var", "Another"]
 
