@@ -85,6 +85,8 @@ _AXES_ROLE = Qt.ItemDataRole.UserRole + 3
 _OUTLINES_ROLE = Qt.ItemDataRole.UserRole + 4
 # Extra text the filter searches besides the cells: the font path, a skipped row's reason.
 _SEARCH_ROLE = Qt.ItemDataRole.UserRole + 5
+# Position of an instance among its font's rows, in the order they were added.
+_ORDER_ROLE = Qt.ItemDataRole.UserRole + 6
 _FORMAT_COLUMN = 1
 _LOCATION_COLUMN = 4
 # Chip in the Format cell of a custom instance row.
@@ -425,6 +427,23 @@ class CustomInstanceDialog(QDialog):
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._reserve_preview_height()
+
+
+class _InstanceItem(QTreeWidgetItem):
+    """An instance row. Sorting the tree orders the fonts only: under each font the rows
+    keep the font's order (its named instances, then the custom ones as they were added),
+    whatever the sort column and direction."""
+
+    def __lt__(self, other: QTreeWidgetItem) -> bool:
+        tree = self.treeWidget()
+        mine, theirs = self.data(0, _ORDER_ROLE), other.data(0, _ORDER_ROLE)
+        if tree is None or mine is None or theirs is None:
+            return super().__lt__(other)
+        # A descending sort asks "other < self" to put self first: answer it the other way
+        # round, so the rows come out in the same order.
+        if tree.header().sortIndicatorOrder() == Qt.SortOrder.DescendingOrder:
+            return mine > theirs
+        return mine < theirs
 
 
 class InstanceTree(QTreeWidget):
@@ -830,7 +849,12 @@ class InstanceTree(QTreeWidget):
     ) -> QTreeWidgetItem:
         name = spec.name or ("Default instance" if not spec.coordinates else "Custom instance")
         location = location_text(spec.coordinates)
-        child = QTreeWidgetItem([name, "", "", "", location])
+        child = _InstanceItem([name, "", "", "", location])
+        child.setData(
+            0,
+            _ORDER_ROLE,
+            max((row.data(0, _ORDER_ROLE) for row in self._children(parent)), default=-1) + 1,
+        )
         child.setFlags(
             Qt.ItemFlag.ItemIsEnabled
             | Qt.ItemFlag.ItemIsSelectable

@@ -415,6 +415,57 @@ def test_add_custom_instance_selects_and_remembers_it(
     assert child_names(tree) == ["Regular", "Bold", "Custom instance"]
 
 
+def test_instances_keep_the_font_order_when_the_tree_is_sorted(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sorting orders the fonts; under each font, named instances keep the font's order
+    and custom ones follow in the order they were added, for any sort column or direction."""
+    sorted_tree = InstanceTree()  # sorting on, as in the window
+    assert sorted_tree.isSortingEnabled()
+    sorted_tree.add_font(FONT_PATH, "Var", variable_info())
+    sorted_tree.add_font(Path("Another.ttf"), "Another", variable_info(Path("Another.ttf")))
+    values = iter([555, 150])
+
+    def fake_exec(self: CustomInstanceDialog) -> int:
+        self._boxes["wght"].setValue(next(values))
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(CustomInstanceDialog, "exec", fake_exec)
+    font = next(
+        sorted_tree.topLevelItem(i)
+        for i in range(sorted_tree.topLevelItemCount())
+        if sorted_tree.topLevelItem(i).text(0) == "Var"
+    )
+    for _ in range(2):
+        sorted_tree.setCurrentItem(font)
+        sorted_tree.add_custom()
+
+    def rows() -> list[tuple[str, str]]:
+        return [(font.child(i).text(0), font.child(i).text(4)) for i in range(font.childCount())]
+
+    expected = [
+        (name, location_text((("wght", weight), ("wdth", 100))))
+        for name, weight in (
+            ("Regular", 400),
+            ("Bold", 700),
+            ("Custom instance", 555),
+            ("Custom instance", 150),
+        )
+    ]
+    assert rows() == expected
+    for column, order in (
+        (0, Qt.SortOrder.DescendingOrder),
+        (4, Qt.SortOrder.AscendingOrder),
+        (4, Qt.SortOrder.DescendingOrder),
+        (0, Qt.SortOrder.AscendingOrder),
+    ):
+        sorted_tree.sortByColumn(column, order)
+        assert rows() == expected, (column, order)
+    # The fonts themselves still follow the sort.
+    sorted_tree.sortByColumn(0, Qt.SortOrder.DescendingOrder)
+    assert [sorted_tree.topLevelItem(i).text(0) for i in range(2)] == ["Var", "Another"]
+
+
 @pytest.mark.parametrize("accepted", [True, False])
 def test_custom_instance_dialog_is_deleted_once_closed(
     tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, accepted: bool

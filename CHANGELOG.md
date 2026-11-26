@@ -23,6 +23,9 @@
   only the actions that apply: Add custom instance… on a font, Edit and Remove on a custom
   instance, none on named instances. Enter expands or collapses a font and edits a custom
   instance.
+- Instance list: under each font, the instances appear in the font's own order, followed
+  by custom instances in the order they were added, whatever the sort column. They used to
+  be sorted by name, which put each new custom instance in a seemingly random place.
 - A paused conversion now shows its progress bar and icons in amber, like the rest of the
   paused footer, instead of grey. Warning colors use a single amber hue.
 - Windows: drop-down lists no longer show black square corners for an instant when they
