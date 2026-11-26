@@ -792,7 +792,14 @@ def test_column_button_sits_in_the_header_corner(
     QTest.mouseClick(viewport, Qt.MouseButton.LeftButton, pos=QPoint(tail_x, row_height // 2))
     QApplication.processEvents()
     assert files.selectionModel().isRowSelected(0, QModelIndex())
-    assert pixels(tail_x)[0] == pixels(cell_x)[0] != QColor(LIGHT.surface)
+    image = viewport.grab().toImage()
+    detail = (
+        f"viewport {viewport.width()}x{viewport.height()}, grab {image.width()}x"
+        f"{image.height()} @{image.devicePixelRatio()}, tail_x {tail_x}, row {row_height}, "
+        f"header {header.length()}, scrollbar {bar.isVisible()} {bar.width()}, "
+        f"rows on screen {files.rowAt(0)}..{files.rowAt(viewport.height() - 1)}"
+    )
+    assert pixels(tail_x)[0] == pixels(cell_x)[0] != QColor(LIGHT.surface), detail
     # Only the font list has the button; the instance tree keeps its plain filler.
     assert win.instance_tree._scrollbar_header.cap.objectName() == "tableScrollbarHeader"
 

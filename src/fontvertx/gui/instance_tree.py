@@ -445,19 +445,23 @@ class _InstanceItem(QTreeWidgetItem):
         # Qt puts self first when self < other (ascending) or other < self (descending):
         # answer with the order the rows should have on screen.
         if ascending:
-            return self._shown_before(other, ascending, by_location)
-        return _InstanceItem._shown_before(other, self, ascending, by_location)
+            return _shown_before(self, other, ascending, by_location)
+        return _shown_before(other, self, ascending, by_location)
 
-    def _shown_before(self, other: QTreeWidgetItem, ascending: bool, by_location: bool) -> bool:
-        custom, other_custom = bool(self.data(0, _CUSTOM_ROLE)), bool(other.data(0, _CUSTOM_ROLE))
-        if custom != other_custom:
-            return not custom  # named instances first
-        if custom and by_location:
-            mine = _location_key(self.data(0, _SPEC_ROLE))
-            theirs = _location_key(other.data(0, _SPEC_ROLE))
-            if mine != theirs:
-                return mine < theirs if ascending else mine > theirs
-        return self.data(0, _ORDER_ROLE) < other.data(0, _ORDER_ROLE)
+
+def _shown_before(
+    item: QTreeWidgetItem, other: QTreeWidgetItem, ascending: bool, by_location: bool
+) -> bool:
+    """Whether instance row ``item`` is shown above ``other``, its sibling."""
+    custom, other_custom = bool(item.data(0, _CUSTOM_ROLE)), bool(other.data(0, _CUSTOM_ROLE))
+    if custom != other_custom:
+        return not custom  # named instances first
+    if custom and by_location:
+        mine = _location_key(item.data(0, _SPEC_ROLE))
+        theirs = _location_key(other.data(0, _SPEC_ROLE))
+        if mine != theirs:
+            return mine < theirs if ascending else mine > theirs
+    return bool(item.data(0, _ORDER_ROLE) < other.data(0, _ORDER_ROLE))
 
 
 def _location_key(spec: InstanceSpec) -> tuple[float, ...]:
