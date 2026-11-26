@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.1
+## 1.2.0
 
 - The headers of the font table and of the instance list show thin dividers between
   columns.
