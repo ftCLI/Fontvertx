@@ -190,6 +190,9 @@ def test_main_configures_application_and_shows_window(
         def setOrganizationName(self, value: str) -> None:
             calls.append(("organization", value))
 
+        def setEffectEnabled(self, effect: object, enabled: bool) -> None:
+            pass  # checked in test_service_extra.test_main_disables_combo_animation
+
         def setStyle(self, value: str) -> None:
             calls.append(("style", value))
 

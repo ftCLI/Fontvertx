@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from fontvertx import __main__ as entry
@@ -40,6 +41,23 @@ def test_main_builds_application_and_window(
     assert created and created[0].maximized  # type: ignore[attr-defined]
     assert qapp.applicationName() == "Fontvertx"
     assert qapp.organizationName() == "Fontvertx"
+
+
+def test_main_disables_combo_animation(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeWindow:
+        def showMaximized(self) -> None:
+            pass
+
+    monkeypatch.setattr(entry, "QApplication", lambda argv: qapp)
+    monkeypatch.setattr(entry, "ConverterWindow", FakeWindow)
+    monkeypatch.setattr(qapp, "exec", lambda: 0)
+    original = QApplication.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo)
+    QApplication.setEffectEnabled(Qt.UIEffect.UI_AnimateCombo, True)
+    try:
+        entry.main()
+        assert not QApplication.isEffectEnabled(Qt.UIEffect.UI_AnimateCombo)
+    finally:
+        QApplication.setEffectEnabled(Qt.UIEffect.UI_AnimateCombo, original)
 
 
 def test_missing_input_path_is_reported(tmp_path: Path) -> None:

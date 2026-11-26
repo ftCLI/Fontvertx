@@ -79,6 +79,8 @@ def main() -> int:
     )
     _set_windows_app_id()
     app = QApplication(sys.argv)
+    # Combo roll-out animation paints an opaque copy of the rounded popup: black corners on Windows.
+    app.setEffectEnabled(Qt.UIEffect.UI_AnimateCombo, False)
     # Neutral cross-platform base style; the application stylesheet sits on top.
     app.setStyle(AppStyle(QStyleFactory.create("Fusion")))
     app.styleHints().setColorScheme(Qt.ColorScheme.Light)
