@@ -2,6 +2,14 @@
 
 ## 1.2.0
 
+- Dark theme: the window follows the system's light or dark appearance (Windows, macOS
+  and Linux desktops that report it) and switches at once when it changes, during a
+  conversion too. The dark theme ("Ardesia") uses slate-grey cards on a near-black page
+  with a brighter blue for accents; errors, warnings and a paused run share one amber.
+  There is no theme setting in the app.
+- The Format, Outlines and UPM columns could come out narrower when measured while the
+  first fonts were being scanned, and widen later; they now always keep room for the sort
+  arrow.
 - The headers of the font table and of the instance list show thin dividers between
   columns.
 - Column resizing is more natural: the divider follows the pointer, and the next

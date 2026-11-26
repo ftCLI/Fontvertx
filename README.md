@@ -21,6 +21,7 @@ Fontvertx converts fonts between TrueType, PostScript (CFF), WOFF and WOFF2, ext
 - **Organized output** — build a folder structure from font properties and conversion settings.
 - **Controllable batches** — pause, resume or cancel mid-run; incompatible fonts are explained, not silently skipped.
 - **One engine** — the GUI and the CLI produce identical results.
+- **Light and dark** — the app follows your system's light or dark appearance, and switches with it while open.
 
 ## Conversions
 

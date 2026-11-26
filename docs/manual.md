@@ -153,6 +153,8 @@ The **footer** is where conversions run. Before a run it shows the selection sum
 
 **Adaptive layout.** On wide windows the font list stays beside the conversion and output cards, which scroll independently when needed. On narrow windows the sections stack vertically.
 
+**Light and dark theme.** The window follows the system's appearance: light or dark, as set in Windows (*Settings → Personalization → Colors*), macOS (*System Settings → Appearance*) or your Linux desktop. Change it while Fontvertx is open and the window switches at once, during a conversion too. There is no theme setting in the app.
+
 **Card states.** Cards 1 and 2 show a check mark when the step is valid (fonts selected, profile chosen). Card 3 shows a **Modified** chip when the options differ from the factory defaults; the **Reset** button next to its title restores them. Until a profile is chosen, card 3 shows *No options yet*.
 
 ---
@@ -402,7 +404,9 @@ When the run ends, the footer shows a colored chip with the outcome, the counts 
 - **Cancelled** — *n* of *total* converted · *time*
 - **Error** (red) — conversion stopped · *n* converted · *time*
 
-On the right: **View log** (highlighted in red when some fonts failed), **Open output folder** and **Convert**, ready for another run. When the cards are stacked (narrow window), View log and Open output folder become icon buttons; hover over them for their names.
+In the dark theme, failures and errors are amber like warnings and pauses, instead of red.
+
+On the right: **View log** (highlighted when some fonts failed: red, or amber in the dark theme), **Open output folder** and **Convert**, ready for another run. When the cards are stacked (narrow window), View log and Open output folder become icon buttons; hover over them for their names.
 
 ### 8.3 The log window
 
@@ -550,7 +554,7 @@ Fontvertx remembers across sessions:
 - the rights confirmation, if you chose **Remember this choice**;
 - window size and position.
 
-The conversion profile is not remembered: you choose it again at every launch.
+The conversion profile is not remembered: you choose it again at every launch. The light or dark theme is not a preference either: it always follows the system (§3).
 
 To restore a profile's options to the factory defaults, use **Reset** in card 3; to remove the output organization, use **Restore defaults** in the *Organize output* dialog.
 
@@ -586,6 +590,7 @@ On macOS, Ctrl maps to Cmd following Qt conventions.
 | Converted files have a `#1`, `#2` … suffix | A file with the same name already existed. Enable **Overwrite existing files** to replace it. |
 | *One or more selected inputs no longer exist.* | Some files were moved or deleted after being added: remove them or reload the list. |
 | The conversion seems stuck on a font | Try **Pause** or **Cancel**; as a last resort close the window and choose **Force close** (§8.4). Check the log file (§10). |
+| The window stays light although the system is dark (Linux) | Fontvertx follows the color scheme your desktop reports; when it reports none, the window is light. Check your desktop's appearance setting (for example *Settings → Appearance* in GNOME). |
 | TTF → OTF output has too many points | Increase **Tolerance** or try **Contour simplification** (experimental). |
 
 To report a problem, open an issue on [GitHub](https://github.com/ftCLI/Fontvertx/issues) and attach the `fontvertx.log` file or the run's JSON Lines export.
