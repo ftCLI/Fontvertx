@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.gui.logs import LogEntry
-from fontvertx.gui.styles import LIGHT, mono_font
+from fontvertx.gui.styles import colors, mono_font
 
 ENTRY_ROLE = Qt.ItemDataRole.UserRole
 
@@ -41,23 +41,23 @@ class LogDelegate(QStyledItemDelegate):
         painter.save()
         painter.setClipRect(option.rect)
         if option.state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, QColor(LIGHT.selection_bg))
+            painter.fillRect(option.rect, QColor(colors().selection_bg))
         painter.setFont(option.font)
         metrics = QFontMetrics(option.font)
         x = option.rect.x()
         baseline = option.rect.y() + (20 - metrics.height()) // 2 + metrics.ascent()
         level_color = {
-            "INFO": LIGHT.placeholder,
-            "WARNING": LIGHT.warn_fg,
-            "ERROR": LIGHT.danger,
+            "INFO": colors().placeholder,
+            "WARNING": colors().warn_fg,
+            "ERROR": colors().danger,
         }[entry.level]
         filename = entry.context.get("input")
         for text, color in (
-            (f"{entry.timestamp} ", LIGHT.placeholder),
+            (f"{entry.timestamp} ", colors().placeholder),
             (entry.level, level_color),
-            (f" [{entry.event}]", LIGHT.placeholder),
-            (f" [{filename}]" if isinstance(filename, str) else "", LIGHT.text),
-            (f" {entry.message}", LIGHT.text if entry.level == "INFO" else level_color),
+            (f" [{entry.event}]", colors().placeholder),
+            (f" [{filename}]" if isinstance(filename, str) else "", colors().text),
+            (f" {entry.message}", colors().text if entry.level == "INFO" else level_color),
         ):
             painter.setPen(QColor(color))
             painter.drawText(x, baseline, text)

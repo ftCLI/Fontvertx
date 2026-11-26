@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -589,6 +590,46 @@ def test_indicator_mark_falls_back_to_none_when_missing(
 
 def test_stylesheet_is_cached(qapp: QApplication) -> None:
     assert styles.stylesheet() is styles.stylesheet()
+
+
+def test_stylesheet_is_built_from_the_active_palette(qapp: QApplication) -> None:
+    assert styles.colors() is LIGHT
+    assert styles.stylesheet() == build_stylesheet(LIGHT)
+
+
+def test_set_palette_reports_a_change_and_switches_the_stylesheet(qapp: QApplication) -> None:
+    other = dataclasses.replace(LIGHT, page="#123456")
+    try:
+        assert styles.set_palette(LIGHT) is False
+        assert styles.set_palette(other) is True
+        assert styles.colors() is other
+        assert "#123456" in styles.stylesheet()
+    finally:
+        styles.set_palette(LIGHT)
+    assert styles.stylesheet() == build_stylesheet(LIGHT)
+
+
+def test_mono_family_change_rebuilds_the_stylesheet(qapp: QApplication) -> None:
+    original = styles.mono_family()
+    try:
+        styles.set_mono_family("Fontvertx Test Mono")
+        assert "Fontvertx Test Mono" in styles.stylesheet()
+    finally:
+        styles.set_mono_family(original)
+    assert "Fontvertx Test Mono" not in styles.stylesheet()
+
+
+def test_palette_is_read_through_colors_outside_styles() -> None:
+    """Code outside styles.py reads the current palette, so a theme switch reaches it."""
+    source = Path(styles.__file__).parent.parent
+    offenders = [
+        f"{path.relative_to(source)}:{number}"
+        for path in sorted(source.rglob("*.py"))
+        if path.name != "styles.py"
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"\bLIGHT\b", line)
+    ]
+    assert offenders == []
 
 
 @pytest.mark.parametrize("field_type", [QLineEdit, QSpinBox, QDoubleSpinBox])

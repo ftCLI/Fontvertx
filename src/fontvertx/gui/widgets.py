@@ -88,9 +88,9 @@ from fontvertx.gui.drop_zone_frame import paint_zone_frame
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.styles import (
     BUTTON_HEIGHT,
-    LIGHT,
     RADIUS_MD,
     RADIUS_PILL,
+    colors,
     mono_font,
     radius_px,
     tabular_font,
@@ -134,10 +134,10 @@ class ScrollOverflowFade(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         gradient = QLinearGradient(0, 0, 0, self.height())
-        transparent = QColor(LIGHT.page)
+        transparent = QColor(colors().page)
         transparent.setAlpha(0)
         gradient.setColorAt(0, transparent)
-        gradient.setColorAt(1, QColor(LIGHT.page))
+        gradient.setColorAt(1, QColor(colors().page))
         painter = QPainter(self)
         painter.fillRect(self.rect(), gradient)
 
@@ -403,7 +403,7 @@ class ExamplePathLabel(QLabel):
                     spans.append(text)
                 else:
                     spans.append(
-                        f'{text[:-1]}<span style="color:{LIGHT.header_group}">/</span>&#8203;'
+                        f'{text[:-1]}<span style="color:{colors().header_group}">/</span>&#8203;'
                     )
             paragraphs.append(f'<div style="margin:0; white-space:pre">{"".join(spans)}</div>')
         self.setText("".join(paragraphs))
@@ -450,7 +450,7 @@ class StepBadge(QLabel):
         self._done = False
         # Weight 600: at 14px the weight-400 stroke is ~1px and antialiases to a
         # lighter green than step_check at 100%.
-        self._check = material_icon("check_wght600", LIGHT.step_check, STEP_ICON_SIZE)
+        self._check = material_icon("check_wght600", colors().step_check, STEP_ICON_SIZE)
 
     def is_done(self) -> bool:
         return self._done
@@ -627,8 +627,8 @@ class ColumnMenuButton(KeyboardPushButton):
         super().__init__()
         self.setObjectName("columnMenuButton")
         self._icons = {
-            False: material_icon("view_column", LIGHT.text_muted, COLUMN_MENU_ICON_SIZE),
-            True: material_icon("view_column", LIGHT.accent, COLUMN_MENU_ICON_SIZE),
+            False: material_icon("view_column", colors().text_muted, COLUMN_MENU_ICON_SIZE),
+            True: material_icon("view_column", colors().accent, COLUMN_MENU_ICON_SIZE),
         }
         self.setIcon(self._icons[False])
         self.setIconSize(QSize(COLUMN_MENU_ICON_SIZE, COLUMN_MENU_ICON_SIZE))
@@ -713,7 +713,7 @@ class HoverIconButton(KeyboardPushButton):
         painter.drawControl(QStyle.ControlElement.CE_PushButton, option)
         if self.hasFocus():
             radius = RADIUS_PILL if self.objectName() == "primaryButton" else RADIUS_MD
-            painter.setPen(QPen(QColor(LIGHT.accent), 2))
+            painter.setPen(QPen(QColor(colors().accent), 2))
             painter.drawRoundedRect(
                 self.rect().adjusted(1, 1, -1, -1), radius_px(radius), radius_px(radius)
             )
@@ -865,9 +865,9 @@ class ComboItemDelegate(QStyledItemDelegate):
         )
         fill = None
         if is_current:
-            fill = LIGHT.accent_tint
+            fill = colors().accent_tint
         elif hovered:
-            fill = LIGHT.row_hover
+            fill = colors().row_hover
         if fill:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(fill))
@@ -875,7 +875,7 @@ class ComboItemDelegate(QStyledItemDelegate):
         font = ui_font(option.font)
         font.setWeight(QFont.Weight.Medium)
         painter.setFont(font)
-        painter.setPen(QColor(LIGHT.text))
+        painter.setPen(QColor(colors().text))
         text_rect = rect.adjusted(12, 0, -36 if is_current else -12, 0)
         metrics = painter.fontMetrics()
         text = metrics.elidedText(
@@ -886,7 +886,7 @@ class ComboItemDelegate(QStyledItemDelegate):
         )
         if is_current:
             cx, cy = rect.right() - 20, rect.center().y()
-            pen = QPen(QColor(LIGHT.accent), 2)
+            pen = QPen(QColor(colors().accent), 2)
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
             painter.setPen(pen)
@@ -898,13 +898,13 @@ class ComboItemDelegate(QStyledItemDelegate):
 
     def _paint_heading(self, painter: QPainter, rect, index) -> None:
         if index.row() > 0:
-            painter.setPen(QPen(QColor(LIGHT.row_separator), 1))
+            painter.setPen(QPen(QColor(colors().row_separator), 1))
             painter.drawLine(rect.left(), rect.top() + 3, rect.right(), rect.top() + 3)
         font = uppercase_font(ui_font(self._combo.font()))
         font.setPixelSize(11)
         font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(font)
-        painter.setPen(QColor(LIGHT.header_group))
+        painter.setPen(QColor(colors().header_group))
         painter.drawText(
             rect.adjusted(12, 6 if index.row() > 0 else 0, -12, 0),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
@@ -936,7 +936,7 @@ class ConversionSelector(QWidget):
         self.combo = PopupComboBox()
         self.combo.setPlaceholderText("Choose a conversion…")
         palette = self.combo.palette()
-        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(LIGHT.placeholder))
+        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(colors().placeholder))
         self.combo.setPalette(palette)
         self.combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
@@ -1019,7 +1019,7 @@ IMPORT_BUTTON_HEIGHT = BUTTON_HEIGHT
 
 
 def _import_icon(name: str) -> QIcon:
-    return material_icon(name, LIGHT.accent, DROP_ICON_SIZE, LIGHT.import_disabled_icon)
+    return material_icon(name, colors().accent, DROP_ICON_SIZE, colors().import_disabled_icon)
 
 
 def _repolish(widget: QWidget) -> None:
@@ -1290,7 +1290,7 @@ class FileTable(QTableView):
         self.column_button.setParent(self)
         self._tail_hover_row = -1
         self.setProperty("dragOver", "false")
-        self.muted_color = QColor(LIGHT.text_disabled)
+        self.muted_color = QColor(colors().text_disabled)
         self.verticalScrollBar().installEventFilter(self)
         # The scrollbar's container (with the filler) is raised by QAbstractScrollArea on
         # its layout passes: each time (ZOrderChange) the button goes back on top, so the

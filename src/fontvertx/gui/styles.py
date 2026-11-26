@@ -219,6 +219,23 @@ LIGHT = Palette(
     dropzone_glyph_active="#b7c6dd",
 )
 
+_active = LIGHT
+
+
+def colors() -> Palette:
+    """The palette of the current theme: read it when painting, never keep its values."""
+    return _active
+
+
+def set_palette(palette: Palette) -> bool:
+    """Make ``palette`` the current one; return whether it changed."""
+    global _active
+    if palette == _active:
+        return False
+    _active = palette
+    return True
+
+
 # Corner radius scale: the radius grows with the size of the element.
 RADIUS_SM = "5px"  # checkboxes, table badges, row actions, small indicators
 RADIUS_MD = "10px"  # buttons, fields, closed combos, popup items, tooltips
@@ -285,7 +302,7 @@ def set_mono_family(family: str) -> None:
     """Override the monospaced family (system fallback when the bundled one fails to load)."""
     global _mono_family
     _mono_family = family
-    stylesheet.cache_clear()
+    clear_stylesheet_cache()
 
 
 def mono_family() -> str:
@@ -1548,6 +1565,15 @@ def build_stylesheet(palette: Palette) -> str:
 
 
 @cache
+def _cached_stylesheet(palette: Palette, mono: str) -> str:
+    del mono  # Part of the cache key: build_stylesheet reads the current family.
+    return build_stylesheet(palette)
+
+
 def stylesheet() -> str:
-    """Return the application style sheet, building it on first use."""
-    return build_stylesheet(LIGHT)
+    """Return the style sheet of the current palette, building it on first use."""
+    return _cached_stylesheet(_active, _mono_family)
+
+
+def clear_stylesheet_cache() -> None:
+    _cached_stylesheet.cache_clear()

@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.gui.icons import material_icon
-from fontvertx.gui.styles import FOOTER_HEIGHT, LIGHT, mono_family
+from fontvertx.gui.styles import FOOTER_HEIGHT, colors, mono_family
 from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import ElidedLabel, KeyboardPushButton, centered_icon_pixels
 from fontvertx.gui.worker import format_duration
@@ -248,7 +248,7 @@ class StatusIcon(QLabel):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         if self._circle:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(LIGHT.surface))
+            painter.setBrush(QColor(colors().surface))
             painter.drawEllipse(QRectF(self.rect()))
         ratio = painter.device().devicePixelRatioF()
         glyph_px, offset_px = centered_icon_pixels(self.width(), self._glyph, ratio)
@@ -272,8 +272,8 @@ class ConversionProgress(QProgressBar):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setRange(0, 1)
         self.setValue(0)
-        self.track = LIGHT.running_track
-        self.fill = LIGHT.accent
+        self.track = colors().running_track
+        self.fill = colors().accent
 
     def set_colors(self, track: str, fill: str) -> None:
         self.track, self.fill = track, fill
@@ -418,7 +418,7 @@ class StatusChip(QFrame):
         icon = self._icons.get(icon_name)
         if icon is None:
             icon = self._icons[icon_name] = material_icon(
-                icon_name, LIGHT.on_primary, size=CHIP_ICON_SIZE
+                icon_name, colors().on_primary, size=CHIP_ICON_SIZE
             )
         self.icon.set_icon(icon)
         self.icon_name = icon_name
@@ -430,20 +430,27 @@ class StatusChip(QFrame):
             widget.style().polish(widget)
 
 
-# Notice glyph per tone: (icon name, color, on a white circle).
-_TONE_GLYPHS = {
-    # Weight 600, like the step badges: weight 400 is too thin at 14px.
-    "success": ("check_wght600", LIGHT.success_icon, True),
-    "warning": ("priority_high", LIGHT.warn_fg, True),
-    "error": ("priority_high", LIGHT.danger, True),
-}
-_TONE_TEXT = {
-    "running": LIGHT.primary_tint_fg,
-    "success": LIGHT.success_icon,
-    "warning": LIGHT.warn_fg,
-    "error": LIGHT.danger,
-    "neutral": LIGHT.slate,
-}
+def _tone_glyphs() -> dict[str, tuple[str, str, bool]]:
+    """Notice glyph per tone, in the current palette: (icon name, color, on a white circle)."""
+    c = colors()
+    return {
+        # Weight 600, like the step badges: weight 400 is too thin at 14px.
+        "success": ("check_wght600", c.success_icon, True),
+        "warning": ("priority_high", c.warn_fg, True),
+        "error": ("priority_high", c.danger, True),
+    }
+
+
+def _tone_text() -> dict[str, str]:
+    """Text color per tone, in the current palette."""
+    c = colors()
+    return {
+        "running": c.primary_tint_fg,
+        "success": c.success_icon,
+        "warning": c.warn_fg,
+        "error": c.danger,
+        "neutral": c.slate,
+    }
 
 
 class StatusPill(QWidget):
@@ -470,7 +477,7 @@ class StatusPill(QWidget):
         self.icon = StatusIcon(RESULT_ICON_SIZE, STATUS_GLYPH_SIZE)
         self._icons = {
             key: material_icon(name, color, size=RESULT_GLYPH_SIZE if circle else 20)
-            for key, (name, color, circle) in _TONE_GLYPHS.items()
+            for key, (name, color, circle) in _tone_glyphs().items()
         }
         self.label = ElidedLabel()
         self.label.setObjectName("statusLabel")
@@ -587,7 +594,7 @@ class StatusPill(QWidget):
         self.label.setText(text if notice else "")
         self.setAccessibleDescription(f"{text}\n{detail}" if detail and detail != text else text)
         if notice and tone in self._icons:
-            circle = _TONE_GLYPHS[tone][2]
+            circle = _tone_glyphs()[tone][2]
             self.icon.set_icon(
                 self._icons[tone],
                 circle=circle,
@@ -597,7 +604,7 @@ class StatusPill(QWidget):
         self.label.setVisible(notice)
         self.close_button.setVisible(notice)
         self.close_button.setIcon(
-            material_icon("close", _TONE_TEXT.get(tone, LIGHT.slate), size=16)
+            material_icon("close", _tone_text().get(tone, colors().slate), size=16)
         )
 
         self.run_view.setVisible(active)
@@ -623,8 +630,8 @@ class StatusPill(QWidget):
             )
             # Paused is a warning tone, amber like the card: never grey (that is CANCELLED).
             self.progress.set_colors(
-                LIGHT.warn_fill if paused else LIGHT.running_track,
-                LIGHT.warn_border if paused else LIGHT.accent,
+                colors().warn_fill if paused else colors().running_track,
+                colors().warn_border if paused else colors().accent,
             )
 
         self.chip.setVisible(final)
@@ -672,20 +679,20 @@ class StatusPill(QWidget):
         icon = self._icon_cache.get(key)
         if icon is None:
             icon = self._icon_cache[key] = material_icon(
-                name, color, size=ACTION_ICON_SIZE, disabled_color=LIGHT.text_disabled
+                name, color, size=ACTION_ICON_SIZE, disabled_color=colors().text_disabled
             )
         return icon
 
     def _sync_action_icons(self, tone: str) -> None:
         for button, name in self._icon_names.items():
             if button.property("danger"):
-                color = LIGHT.danger
+                color = colors().danger
             elif tone == "success":
-                color = LIGHT.success_icon
+                color = colors().success_icon
             elif tone == "warning":  # warnings and the paused run
-                color = LIGHT.warn_fg
+                color = colors().warn_fg
             else:
-                color = LIGHT.slate
+                color = colors().slate
             button.setIcon(self._action_icon(name, color))
 
     def set_compact(self, compact: bool) -> None:

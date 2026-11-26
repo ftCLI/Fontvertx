@@ -44,7 +44,7 @@ from shiboken6 import isValid
 
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.profiles import PROFILES, available_organization_criteria
-from fontvertx.gui.styles import LIGHT, RADIUS_MD, RADIUS_XL, radius_px
+from fontvertx.gui.styles import RADIUS_MD, RADIUS_XL, colors, radius_px
 from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import (
     ComboItemDelegate,
@@ -94,7 +94,7 @@ def _paint_highlight(widget: QWidget, color: QColor, radius: int) -> None:
 class _AnimatedFrame(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.highlight_color = QColor(LIGHT.accent_tint)
+        self.highlight_color = QColor(colors().accent_tint)
         self.highlight_color.setAlpha(0)
 
     def set_highlight_color(self, color: QColor) -> None:
@@ -109,7 +109,7 @@ class _AnimatedFrame(QFrame):
 class _AnimatedWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.highlight_color = QColor(LIGHT.accent_tint)
+        self.highlight_color = QColor(colors().accent_tint)
         self.highlight_color.setAlpha(0)
 
     def set_highlight_color(self, color: QColor) -> None:
@@ -152,7 +152,7 @@ class _SwapAnimation:
             self.group.addAnimation(animation)
             widget.move(start)
 
-        start_color = QColor(LIGHT.accent_tint)
+        start_color = QColor(colors().accent_tint)
         end_color = QColor(start_color)
         end_color.setAlpha(0)
         self.highlight = QVariantAnimation()
@@ -191,8 +191,8 @@ class _SwapAnimation:
 
 def _icon(name: str, size: int, accent: bool = False) -> QIcon:
     """Dialog icon: slate by default, accent for ``add``, muted when disabled."""
-    color = LIGHT.accent if accent else LIGHT.slate
-    return material_icon(name, color, size, disabled_color=LIGHT.icon_disabled)
+    color = colors().accent if accent else colors().slate
+    return material_icon(name, color, size, disabled_color=colors().icon_disabled)
 
 
 def _icon_button(

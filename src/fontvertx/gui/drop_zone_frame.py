@@ -7,7 +7,7 @@ are ordinary labels on top.
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 
-from fontvertx.gui.styles import LIGHT
+from fontvertx.gui.styles import colors
 
 ZONE_RADIUS = 14
 BORDER_WIDTH = 1.5
@@ -17,9 +17,9 @@ DASH_PATTERN = (4.0, 3.0)  # in pen widths
 def zone_colors(dragging: bool) -> dict[str, QColor]:
     """Background and border colors, at rest or while files are dragged over the zone."""
     if dragging:
-        names = {"background": LIGHT.dropzone_bg_active, "border": LIGHT.accent}
+        names = {"background": colors().dropzone_bg_active, "border": colors().accent}
     else:
-        names = {"background": LIGHT.dropzone_bg, "border": LIGHT.border_strong}
+        names = {"background": colors().dropzone_bg, "border": colors().border_strong}
     return {key: QColor(value) for key, value in names.items()}
 
 

@@ -64,7 +64,7 @@ from fontvertx.gui.column_widths import (
 )
 from fontvertx.gui.file_list import FontBadgeDelegate, FontRowDelegate, font_row_background
 from fontvertx.gui.icons import material_icon
-from fontvertx.gui.styles import LIGHT, RADIUS_SM, radius_px, tabular_font, ui_font
+from fontvertx.gui.styles import RADIUS_SM, colors, radius_px, tabular_font, ui_font
 from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import (
     DecimalSpinBox,
@@ -125,7 +125,7 @@ def add_action_font() -> QFont:
 
 @cache
 def _add_action_icon() -> QIcon:
-    return material_icon("add", LIGHT.accent, ADD_ACTION_GLYPH)
+    return material_icon("add", colors().accent, ADD_ACTION_GLYPH)
 
 
 def add_action_rect(cell: QRect) -> QRect:
@@ -165,9 +165,9 @@ def paint_add_action(painter: QPainter, rect: QRect, *, ghost: bool, pressed: bo
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     if ghost:
         painter.setOpacity(ADD_ACTION_GHOST_OPACITY)
-    border = QColor(LIGHT.accent_border_soft if ghost else LIGHT.accent)
+    border = QColor(colors().accent_border_soft if ghost else colors().accent)
     painter.setPen(QPen(border, 1))
-    painter.setBrush(QColor(LIGHT.row_selection if pressed else LIGHT.surface))
+    painter.setBrush(QColor(colors().row_selection if pressed else colors().surface))
     radius = radius_px(RADIUS_SM)
     painter.drawRoundedRect(QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
     glyph = QRect(
@@ -178,7 +178,7 @@ def paint_add_action(painter: QPainter, rect: QRect, *, ghost: bool, pressed: bo
     )
     _add_action_icon().paint(painter, glyph, Qt.AlignmentFlag.AlignCenter)
     painter.setFont(add_action_font())
-    painter.setPen(QColor(LIGHT.accent))
+    painter.setPen(QColor(colors().accent))
     label = QRect(glyph.right() + 1 + ADD_ACTION_GLYPH_GAP, rect.top(), rect.width(), rect.height())
     painter.drawText(
         label, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, ADD_ACTION_LABEL
@@ -485,11 +485,11 @@ class InstanceTree(QTreeWidget):
         self._filter_text = ""
         self._hide_incompatible = False
         self._memory: dict[Path, _Memory] = {}
-        self._muted_color = QColor(LIGHT.text_disabled)
+        self._muted_color = QColor(colors().text_disabled)
         self._branch_icons = {
             (expanded, hovered): material_icon(
                 "expand_more" if expanded else "chevron_right",
-                LIGHT.text if hovered else LIGHT.text_muted,
+                colors().text if hovered else colors().text_muted,
                 18,
             )
             for expanded in (False, True)
@@ -687,11 +687,11 @@ class InstanceTree(QTreeWidget):
     ) -> None:
         super().drawRow(painter, option, index)
         painter.save()
-        painter.setPen(QColor(LIGHT.row_separator))
+        painter.setPen(QColor(colors().row_separator))
         painter.drawLine(0, option.rect.bottom(), self.viewport().width(), option.rect.bottom())
         current = self.currentIndex()
         if self.hasFocus() and current.row() == index.row() and current.parent() == index.parent():
-            painter.fillRect(0, option.rect.top(), 2, option.rect.height(), QColor(LIGHT.accent))
+            painter.fillRect(0, option.rect.top(), 2, option.rect.height(), QColor(colors().accent))
         painter.restore()
 
     def drawBranches(
@@ -742,7 +742,7 @@ class InstanceTree(QTreeWidget):
             | Qt.ItemFlag.ItemIsAutoTristate
         )
         parent.setToolTip(0, wrap_tip(str(path)))
-        parent.setForeground(_LOCATION_COLUMN, QColor(LIGHT.text_muted))
+        parent.setForeground(_LOCATION_COLUMN, QColor(colors().text_muted))
         # Right-aligned so the summary stays put when "+ Instance" appears beside it.
         parent.setTextAlignment(
             _LOCATION_COLUMN, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter

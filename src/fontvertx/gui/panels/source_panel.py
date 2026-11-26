@@ -40,8 +40,8 @@ from fontvertx.gui.settings_store import OPTIONAL_FONT_COLUMNS
 from fontvertx.gui.styles import (
     BUTTON_HEIGHT,
     FIELD_HEIGHT,
-    LIGHT,
     SCAN_LABEL_PIXEL_SIZE,
+    colors,
     mono_font,
 )
 from fontvertx.gui.widgets import (
@@ -81,14 +81,14 @@ class ScanProgress(QProgressBar):
         radius = self.height() / 2
         track = QPainterPath()
         track.addRoundedRect(QRectF(self.rect()), radius, radius)
-        painter.fillPath(track, QColor(LIGHT.progress_track))
+        painter.fillPath(track, QColor(colors().progress_track))
         painter.setClipPath(track)
         span = self.maximum() - self.minimum()
         fraction = max(0.0, min(1.0, (self.value() - self.minimum()) / span)) if span else 0
         width = self.width() * fraction
         fill = QPainterPath()
         fill.addRoundedRect(QRectF(0, 0, width, self.height()), min(radius, width / 2), radius)
-        painter.fillPath(fill, QColor(LIGHT.accent))
+        painter.fillPath(fill, QColor(colors().accent))
 
 
 class ListStatusLabel(ElidedLabel):
@@ -118,8 +118,10 @@ class GhostIconButton(KeyboardPushButton):
 
     def __init__(self, icon: str) -> None:
         super().__init__()
-        self._rest = material_icon(icon, LIGHT.text_muted, 16, disabled_color=LIGHT.text_disabled)
-        self._active = material_icon(icon, LIGHT.text, 16, disabled_color=LIGHT.text_disabled)
+        self._rest = material_icon(
+            icon, colors().text_muted, 16, disabled_color=colors().text_disabled
+        )
+        self._active = material_icon(icon, colors().text, 16, disabled_color=colors().text_disabled)
         self.setIcon(self._rest)
 
     def enterEvent(self, event: QEnterEvent) -> None:
@@ -207,7 +209,7 @@ def build_source_card(window: ConverterWindow) -> QGroupBox:
     # Replace the style's raster clear glyph with the vector one (sharp at any scale).
     clear_action = w.font_filter.findChild(QAction, "_q_qlineeditclearaction")
     if clear_action is not None:
-        clear_action.setIcon(material_icon("close", LIGHT.text_muted, 16))
+        clear_action.setIcon(material_icon("close", colors().text_muted, 16))
     w.font_filter.setToolTip("Filter fonts by name, family, style, format, outlines, or UPM.")
     w.font_filter.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     w.file_options_row = QBoxLayout(QBoxLayout.Direction.LeftToRight)

@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.layout_manager import CARD_PADDING
-from fontvertx.gui.styles import FIELD_HEIGHT, LIGHT
+from fontvertx.gui.styles import FIELD_HEIGHT, colors
 from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import (
     UPM_STEP_VALUES,
@@ -83,13 +83,13 @@ class _EmptyStateIcon(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setFixedSize(EMPTY_ICON_CIRCLE, EMPTY_ICON_CIRCLE)
-        self._icon = material_icon("tune", LIGHT.accent, EMPTY_ICON_GLYPH)
+        self._icon = material_icon("tune", colors().accent, EMPTY_ICON_GLYPH)
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(LIGHT.accent_tint))
+        painter.setBrush(QColor(colors().accent_tint))
         painter.drawEllipse(QRectF(self.rect()))
         ratio = painter.device().devicePixelRatioF()
         glyph_px, offset_px = centered_icon_pixels(self.width(), EMPTY_ICON_GLYPH, ratio)
@@ -267,7 +267,7 @@ class ProfileOptionsPanel(QGroupBox):
         options.addLayout(spin_grid)
 
         self.upm_warning_label = QLabel(
-            f'<span style="color:{LIGHT.warn_accent}">▲</span>&nbsp;Non-standard UPM.'
+            f'<span style="color:{colors().warn_accent}">▲</span>&nbsp;Non-standard UPM.'
         )
         self.upm_warning_label.setTextFormat(Qt.TextFormat.RichText)
         self.upm_warning_label.setObjectName("upmWarning")
