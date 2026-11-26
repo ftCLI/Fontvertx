@@ -468,6 +468,45 @@ def test_instance_order_under_a_sorted_tree(
     assert [sorted_tree.topLevelItem(i).text(0) for i in range(2)] == ["Var", "Another"]
 
 
+@pytest.mark.parametrize("order", [Qt.SortOrder.AscendingOrder, Qt.SortOrder.DescendingOrder])
+def test_rescan_preserves_custom_insertion_order(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, order: Qt.SortOrder
+) -> None:
+    tree = InstanceTree()
+    tree.add_font(FONT_PATH, "Var", variable_info())
+    values = iter([555, 150, 800])
+
+    def fake_exec(self: CustomInstanceDialog) -> int:
+        self._boxes["wght"].setValue(next(values))
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(CustomInstanceDialog, "exec", fake_exec)
+    font = tree.topLevelItem(0)
+    for _ in range(3):
+        tree.setCurrentItem(font)
+        tree.add_custom()
+
+    tree.sortByColumn(4, order)
+    unchecked = font.child(2).data(0, tree_module._SPEC_ROLE)
+    font.child(2).setCheckState(0, Qt.CheckState.Unchecked)
+    tree.clear_fonts()
+    tree.add_font(FONT_PATH, "Var", variable_info())
+    tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+
+    font = tree.topLevelItem(0)
+    custom = [font.child(i) for i in range(2, font.childCount())]
+    assert [row.data(0, tree_module._SPEC_ROLE).coordinates[0][1] for row in custom] == [
+        555,
+        150,
+        800,
+    ]
+    assert [
+        row.data(0, tree_module._SPEC_ROLE)
+        for row in custom
+        if row.checkState(0) == Qt.CheckState.Unchecked
+    ] == [unchecked]
+
+
 @pytest.mark.parametrize("accepted", [True, False])
 def test_custom_instance_dialog_is_deleted_once_closed(
     tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, accepted: bool

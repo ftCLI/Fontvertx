@@ -957,9 +957,13 @@ class InstanceTree(QTreeWidget):
         if path is None:
             return
         children = self._children(font)
+        custom = sorted(
+            (c for c in children if c.data(0, _CUSTOM_ROLE)),
+            key=lambda c: c.data(0, _ORDER_ROLE),
+        )
         self._memory[path] = (
             {c.data(0, _SPEC_ROLE) for c in children if c.checkState(0) == Qt.CheckState.Checked},
-            [c.data(0, _SPEC_ROLE) for c in children if c.data(0, _CUSTOM_ROLE)],
+            [c.data(0, _SPEC_ROLE) for c in custom],
         )
 
     def clear_fonts(self) -> None:
