@@ -621,9 +621,10 @@ class StatusPill(QWidget):
             self.setAccessibleDescription(
                 " · ".join(part for part in (title, f"{done} / {total}", line) if part)
             )
+            # Paused is a warning tone, amber like the card: never grey (that is CANCELLED).
             self.progress.set_colors(
-                LIGHT.border_strong if paused else LIGHT.running_track,
-                LIGHT.control_border_strong if paused else LIGHT.accent,
+                LIGHT.warn_fill if paused else LIGHT.running_track,
+                LIGHT.warn_border if paused else LIGHT.accent,
             )
 
         self.chip.setVisible(final)
@@ -681,7 +682,7 @@ class StatusPill(QWidget):
                 color = LIGHT.danger
             elif tone == "success":
                 color = LIGHT.success_icon
-            elif tone == "warning" and self.state is not StatusState.PAUSED:
+            elif tone == "warning":  # warnings and the paused run
                 color = LIGHT.warn_fg
             else:
                 color = LIGHT.slate

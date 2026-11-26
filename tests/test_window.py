@@ -4149,7 +4149,7 @@ def test_overwrite_card_text_follows_the_checkbox(win: ConverterWindow) -> None:
 
     assert colors() == (LIGHT.text, LIGHT.text_muted)
     win.overwrite.setChecked(True)
-    assert colors() == (LIGHT.warning, LIGHT.warn_fg)
+    assert colors() == (LIGHT.warn_fg, LIGHT.warn_fg)
     image = win.overwrite_panel.grab().toImage()
     assert image.pixelColor(image.width() - 6, image.height() // 2).name() == LIGHT.warn_panel_bg
     win.overwrite.setChecked(False)

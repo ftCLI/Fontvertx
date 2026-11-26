@@ -939,8 +939,8 @@ def test_notice_keeps_glyph_and_dismiss(styled_window: ConverterWindow) -> None:
             StatusState.PAUSED,
             LIGHT.warn_bg,
             LIGHT.warn_border,
-            LIGHT.border_strong,
-            LIGHT.control_border_strong,
+            LIGHT.warn_fill,
+            LIGHT.warn_border,
             "Paused",
         ),
     ],
@@ -978,6 +978,48 @@ def test_footer_card_tone_and_progress_bar(
     image = bar.grab().toImage()
     assert image.pixelColor(bar.width() // 8, 3).name() == fill
     assert image.pixelColor(bar.width() * 3 // 4, 3).name() == track
+
+
+def test_paused_run_stays_amber(styled_window: ConverterWindow) -> None:
+    """Paused uses the amber warning family throughout; grey is only for CANCELLED."""
+    window = styled_window
+    window.resize(1200, 600)
+    window.show()
+    window.converter.outcome.total = 4
+    window.converter.progress_done = 2
+    window.progress.setRange(0, 4)
+    window.progress.setValue(2)
+    window._set_run_status(StatusState.PAUSED)
+    QApplication.processEvents()
+    pill = window.status_pill
+    bar = pill.progress
+    image = bar.grab().toImage()
+    fill = image.pixelColor(bar.width() // 8, 3).name()
+    track = image.pixelColor(bar.width() * 7 // 8, 3).name()
+    assert (fill, track) == (LIGHT.warn_border, LIGHT.warn_fill)
+    grey = {LIGHT.border_strong, LIGHT.control_border_strong, LIGHT.slate}
+    assert not {fill, track} & grey
+    # The run's action icons (View log) are amber too, like the other warning states.
+    for button, name in pill._icon_names.items():
+        expected = pill._action_icon(name, LIGHT.warn_fg)
+        assert button.icon().cacheKey() == expected.cacheKey()
+    # Resumed: back to the running colors.
+    window._set_run_status(StatusState.RUNNING)
+    QApplication.processEvents()
+    image = bar.grab().toImage()
+    assert image.pixelColor(bar.width() // 8, 3).name() == LIGHT.accent
+
+
+def test_warning_palette_is_one_amber_family() -> None:
+    """warn_accent is amber like the other warn_* tokens; ``warning`` merged into warn_fg."""
+    assert not hasattr(LIGHT, "warning")
+    for name in ("warn_accent", "warn_fg", "warn_border", "warn_fill"):
+        hue = QColor(getattr(LIGHT, name)).hslHue()
+        assert 34 <= hue <= 42, f"{name} hue {hue}"
+    # Chip and checked Overwrite: white on warn_accent; the "Non-standard UPM" mark:
+    # warn_accent on the card.
+    assert _contrast(LIGHT.on_primary, LIGHT.warn_accent) >= 4.5
+    assert _contrast(LIGHT.warn_accent, LIGHT.surface) >= 4.5
 
 
 def test_run_title_tones_and_paused_hint(styled_window: ConverterWindow) -> None:

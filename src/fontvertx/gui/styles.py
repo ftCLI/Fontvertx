@@ -54,7 +54,6 @@ class Palette:
     tree_selection_bg: str
     progress_track: str
     danger: str
-    warning: str
     success: str
     primary_tint_bg: str
     primary_tint_fg: str
@@ -158,7 +157,6 @@ LIGHT = Palette(
     tree_selection_bg="#e6ecf5",
     progress_track="#e1e6ee",
     danger="#8f1d24",
-    warning="#6b4200",
     success="#14633a",
     primary_tint_bg="#e6ecf5",
     primary_tint_fg="#2f5da8",
@@ -174,7 +172,7 @@ LIGHT = Palette(
     warn_fill="#fbe3b5",
     warn_border="#d9962e",
     warn_fg="#7a4b00",
-    warn_accent="#b45309",
+    warn_accent="#9a6200",
     badge_bg="#e5eaf1",
     badge_muted="#f2f4f8",
     table_header="#eff2f7",
@@ -391,7 +389,7 @@ QPushButton#iconButton {
     border-radius: $radius_md;
 }
 QLabel#warningHint {
-    color: $warning;
+    color: $warn_fg;
 }
 QLabel#stepLabel {
     color: $text_secondary;
@@ -410,7 +408,7 @@ QLabel#stepHint[mono="true"] {
     font-weight: 500;
 }
 QLabel#statusLabel[state="warning"] {
-    color: $warning;
+    color: $warn_fg;
 }
 QLabel#statusLabel[state="success"] {
     color: $success;
@@ -765,7 +763,7 @@ QWidget#overwritePanel QCheckBox {
     color: $text;
 }
 QWidget#overwritePanel[active="true"] QCheckBox {
-    color: $warning;
+    color: $warn_fg;
 }
 QLabel#overwriteHint {
     color: $text_muted;
