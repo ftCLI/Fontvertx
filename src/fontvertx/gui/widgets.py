@@ -70,7 +70,14 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from fontvertx.constants import MAX_UPM, MIN_UPM
-from fontvertx.gui.column_widths import METRIC_EVENTS, fixed_column_widths
+from fontvertx.gui.column_widths import (
+    FIRST_COLUMN_MIN_WIDTH,
+    METRIC_EVENTS,
+    OPTIONAL_COLUMN_MAX_WIDTH,
+    OPTIONAL_COLUMN_MIN_WIDTH,
+    FillColumnLayout,
+    fixed_column_widths,
+)
 from fontvertx.gui.drop_zone_frame import paint_zone_frame
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.styles import (
@@ -1177,16 +1184,31 @@ class FileTable(QTableView):
     FIXED_COLUMNS = {"format": 1, "outlines": 2, "upm": 3}
 
     def configure_columns(self) -> None:
+        """Name, Format, Outlines, UPM, then the optional Family and Style (hidden)."""
         header = self.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in range(1, 6):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
-        for column in (4, 5):
-            header.resizeSection(column, 140)
         self.update_column_widths()
         for column in (4, 5):
             self.setColumnHidden(column, True)
+        # Name fills the view; Family and Style fit their content (see FillColumnLayout).
+        self._column_layout = FillColumnLayout(
+            self,
+            header,
+            fill=0,
+            fixed=self.FIXED_COLUMNS.values(),
+            minimums={0: FIRST_COLUMN_MIN_WIDTH},
+            default_minimum=OPTIONAL_COLUMN_MIN_WIDTH,
+            auto_fit={4: OPTIONAL_COLUMN_MAX_WIDTH, 5: OPTIONAL_COLUMN_MAX_WIDTH},
+        )
+
+    def setColumnHidden(self, column: int, hide: bool) -> None:
+        super().setColumnHidden(column, hide)
+        layout = getattr(self, "_column_layout", None)
+        if layout is None:
+            return
+        if hide:
+            layout.relayout()  # Name takes the space back
+        else:
+            layout.column_shown(column)
 
     def update_column_widths(self) -> None:
         fixed_column_widths(self, self.horizontalHeader(), self.FIXED_COLUMNS)

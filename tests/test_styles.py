@@ -496,7 +496,9 @@ def test_header_sections_have_right_separator_except_last(icon_dir: Path) -> Non
     assert "padding-right: 3px;" in last
     # Separators belong to the header only: rows and the scrollbar filler get none.
     assert "border-right" not in _selector_block(sheet, r"QWidget#tableScrollbarHeader")
-    assert "border-right" not in _selector_block(sheet, r"QHeaderView::section, QTableCornerButton::section")
+    assert "border-right" not in _selector_block(
+        sheet, r"QHeaderView::section, QTableCornerButton::section"
+    )
 
 
 def test_header_separators_render_between_sections_only(qapp: QApplication) -> None:

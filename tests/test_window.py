@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QBoxLayout,
     QDialog,
     QFileDialog,
+    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -23,8 +24,8 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
+from fontvertx.gui import column_widths, layout_manager, styles
 from fontvertx.gui import conversion_controller as conversion_controller_module
-from fontvertx.gui import layout_manager, styles
 from fontvertx.gui import scanner as scanner_module
 from fontvertx.gui import window as window_module
 from fontvertx.gui import worker as worker_module
@@ -718,9 +719,15 @@ def test_optional_columns_menu_persists_visibility(
     family.trigger()
     style.trigger()
     assert not win.files.isColumnHidden(4) and not win.files.isColumnHidden(5)
-    assert header.sectionSize(4) == 140 and header.sectionSize(5) == 140
+    # Family and Style fit their content; Name fills the rest.
+    for column in (4, 5):
+        assert header.sectionSize(column) == win.files._column_layout.content_width(column)
+        assert header.sectionSize(column) <= column_widths.OPTIONAL_COLUMN_MAX_WIDTH
+    assert header.length() == win.files.viewport().width()
     style.trigger()
     assert win.files.isColumnHidden(5)
+    # Family is now last: nothing on its right compensates, so its border is fixed.
+    assert header.sectionResizeMode(4) == QHeaderView.ResizeMode.Fixed
     win._settings.sync()
 
     restarted = ConverterWindow()

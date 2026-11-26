@@ -42,7 +42,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QGridLayout,
-    QHeaderView,
     QLabel,
     QMenu,
     QMessageBox,
@@ -56,7 +55,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from fontvertx.gui.column_widths import METRIC_EVENTS, fixed_column_widths
+from fontvertx.gui.column_widths import (
+    FIRST_COLUMN_MIN_WIDTH,
+    METRIC_EVENTS,
+    FillColumnLayout,
+    fixed_column_widths,
+)
 from fontvertx.gui.file_list import FontBadgeDelegate, FontRowDelegate, font_row_background
 from fontvertx.gui.icons import material_icon
 from fontvertx.gui.styles import LIGHT, RADIUS_SM, radius_px, tabular_font, ui_font
@@ -420,7 +424,8 @@ class InstanceTree(QTreeWidget):
             )
         self.headerItem().setTextAlignment(self._UPM_COLUMN, _UPM_ALIGNMENT)
         self.headerItem().setToolTip(
-            _LOCATION_COLUMN, "Axis coordinates. Drag the column divider to resize."
+            _LOCATION_COLUMN,
+            "Axis coordinates. Drag the Font / instance column divider to resize.",
         )
         self.setRootIsDecorated(True)
         self.setMouseTracking(True)
@@ -439,11 +444,16 @@ class InstanceTree(QTreeWidget):
         self._scrollbar_header = ScrollbarHeaderFiller(self, header)
         for column in (1, 2):
             self.setItemDelegateForColumn(column, InstanceBadgeDelegate(self))
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in range(1, self.columnCount()):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
         self.update_column_widths()
+        # Font / instance is dragged; Location fills the rest (see FillColumnLayout).
+        self._column_layout = FillColumnLayout(
+            self,
+            header,
+            fill=0,
+            fixed=self.FIXED_COLUMNS.values(),
+            minimums={0: FIRST_COLUMN_MIN_WIDTH, _LOCATION_COLUMN: LOCATION_MIN_WIDTH},
+            default_minimum=LOCATION_MIN_WIDTH,
+        )
         header.resizeSection(_LOCATION_COLUMN, LOCATION_MIN_WIDTH)
         self.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self._filter_text = ""
@@ -759,6 +769,11 @@ class InstanceTree(QTreeWidget):
             QTimer.singleShot(0, self, self.update_column_widths)
         return super().event(event)
 
+    def _fit_location_column(self) -> None:
+        """Location fits its content within its bounds; Font / instance takes the rest."""
+        width = max(self.sizeHintForColumn(_LOCATION_COLUMN), LOCATION_MIN_WIDTH)
+        self.header().resizeSection(_LOCATION_COLUMN, min(width, LOCATION_MAX_WIDTH))
+
     @staticmethod
     def _row_texts(label: str, info: FontInfo, location: str) -> list[str]:
         upm = "Mixed" if info.upm is None else str(info.upm)
@@ -781,13 +796,6 @@ class InstanceTree(QTreeWidget):
         child.setFont(_LOCATION_COLUMN, tabular_font())
         parent.addChild(child)
         return child
-
-    def _fit_location_column(self) -> None:
-        self.resizeColumnToContents(_LOCATION_COLUMN)
-        self.header().resizeSection(
-            _LOCATION_COLUMN,
-            min(max(self.columnWidth(_LOCATION_COLUMN), LOCATION_MIN_WIDTH), LOCATION_MAX_WIDTH),
-        )
 
     def set_hide_incompatible(self, hide: bool) -> None:
         """Show or hide fonts that cannot be exported as variable instances."""

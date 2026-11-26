@@ -929,6 +929,52 @@ def test_location_column_fits_action_and_summary(tree: InstanceTree, app_font: N
     assert tree.columnWidth(tree_module._LOCATION_COLUMN) >= tree_module.LOCATION_MIN_WIDTH
 
 
+def test_font_column_fills_and_location_keeps_its_width(tree: InstanceTree) -> None:
+    _shown_tree(tree)
+    header = tree.header()
+    location = tree_module._LOCATION_COLUMN
+
+    def font_fills() -> bool:
+        others = sum(header.sectionSize(c) for c in range(1, tree.columnCount()))
+        return header.sectionSize(0) == tree.viewport().width() - others
+
+    width = header.sectionSize(location)
+    assert tree_module.LOCATION_MIN_WIDTH <= width <= tree_module.LOCATION_MAX_WIDTH
+    assert font_fills()
+    tree.resize(1000, 300)
+    QApplication.processEvents()
+    assert header.sectionSize(location) == width and font_fills()
+    tree.add_font(Path("Second.ttf"), "Second", variable_info(Path("Second.ttf")))
+    assert font_fills()
+    # Dragging the Font / instance border: Location compensates, total width unchanged.
+    start = header.sectionViewportPosition(0) + header.sectionSize(0) - 1
+    before = header.sectionSize(location)
+    for kind, x, buttons in (
+        (QEvent.Type.MouseButtonPress, start, Qt.MouseButton.LeftButton),
+        (QEvent.Type.MouseMove, start - 50, Qt.MouseButton.LeftButton),
+        (QEvent.Type.MouseButtonRelease, start - 50, Qt.MouseButton.NoButton),
+    ):
+        pos = QPointF(x, header.height() / 2)
+        button = (
+            Qt.MouseButton.NoButton if kind == QEvent.Type.MouseMove else Qt.MouseButton.LeftButton
+        )
+        QApplication.sendEvent(
+            header.viewport(),
+            QMouseEvent(
+                kind,
+                pos,
+                header.viewport().mapToGlobal(pos),
+                button,
+                buttons,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+    assert header.sectionSize(location) == before + 50
+    assert font_fills()
+    assert tree.horizontalScrollBar().maximum() == 0
+    tree.close()
+
+
 def test_summary_text_does_not_move_when_the_action_appears(
     tree: InstanceTree, app_font: None
 ) -> None:
