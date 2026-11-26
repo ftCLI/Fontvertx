@@ -751,14 +751,6 @@ def test_column_button_sits_in_the_header_corner(
         # The button goes back on top on the event-loop pass after the scrollbar shows.
         QTest.qWait(30)
         assert bar.isVisible() == (rows > 1)
-        # The viewport makes room for the scrollbar on a later layout pass, which a slow
-        # machine may not have run yet: wait for it rather than for a fixed time.
-        room = files.contentsRect().width() - (bar.width() if bar.isVisible() else 0)
-        for _ in range(100):
-            if viewport.width() == room:
-                break
-            QTest.qWait(10)
-        assert viewport.width() == room
         # The corner: 32px whatever the scrollbar, as tall as the header, against the
         # table's inner right edge; it also covers the band above the scrollbar.
         geometry = button.geometry()
@@ -792,22 +784,20 @@ def test_column_button_sits_in_the_header_corner(
             image.pixelColor(round(x * scale), round(bottom * scale)),
         )
 
-    tail_x = viewport.width() - 2
-    assert tail_x > header.length()
+    def tail_x() -> int:
+        # From the current width: on a slow machine the viewport can still narrow for the
+        # scrollbar on a later layout pass (the click below runs it), so never keep it.
+        return viewport.width() - 2
+
+    assert tail_x() > header.length()
     cell_x = files.columnViewportPosition(3) + 2
-    assert pixels(tail_x) == pixels(cell_x)
-    assert pixels(tail_x)[1] == QColor(LIGHT.row_separator)
-    QTest.mouseClick(viewport, Qt.MouseButton.LeftButton, pos=QPoint(tail_x, row_height // 2))
+    assert pixels(tail_x()) == pixels(cell_x)
+    assert pixels(tail_x())[1] == QColor(LIGHT.row_separator)
+    QTest.mouseClick(viewport, Qt.MouseButton.LeftButton, pos=QPoint(tail_x(), row_height // 2))
     QApplication.processEvents()
     assert files.selectionModel().isRowSelected(0, QModelIndex())
-    image = viewport.grab().toImage()
-    detail = (
-        f"viewport {viewport.width()}x{viewport.height()}, grab {image.width()}x"
-        f"{image.height()} @{image.devicePixelRatio()}, tail_x {tail_x}, row {row_height}, "
-        f"header {header.length()}, scrollbar {bar.isVisible()} {bar.width()}, "
-        f"rows on screen {files.rowAt(0)}..{files.rowAt(viewport.height() - 1)}"
-    )
-    assert pixels(tail_x)[0] == pixels(cell_x)[0] != QColor(LIGHT.surface), detail
+    assert tail_x() > header.length()
+    assert pixels(tail_x())[0] == pixels(cell_x)[0] != QColor(LIGHT.surface)
     # Only the font list has the button; the instance tree keeps its plain filler.
     assert win.instance_tree._scrollbar_header.cap.objectName() == "tableScrollbarHeader"
 
