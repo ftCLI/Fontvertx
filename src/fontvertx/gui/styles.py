@@ -228,10 +228,10 @@ LIGHT = Palette(
     chip_neutral_bg="#1e2030",
 )
 
-# "Ardesia" (slate): the dark theme of the "Fontvertx - dark mode" design canvas
-# (docs/design/dark-mode, palette "slate"). Cards a step lighter than the page, a brighter
-# blue for accent marks and a light blue for accent text on tints. Errors, warnings and a
-# paused run share one amber.
+# "Ardesia": the dark theme, from the "slate" palette of the "Fontvertx - dark mode" design
+# canvas. Cards a step lighter than the page, a brighter blue for accent marks and a light
+# blue for accent text on tints. Errors, warnings and a paused run share one amber, darker
+# than the canvas's where white text or the paused bar's border needs the contrast.
 DARK = Palette(
     page="#12141b",
     surface="#1b1e27",
