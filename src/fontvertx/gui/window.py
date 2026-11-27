@@ -103,7 +103,6 @@ from fontvertx.gui.styles import (
     FOOTER_PAD_LEFT,
     FOOTER_PAD_RIGHT,
     FOOTER_PAD_V,
-    LIGHT,
     stylesheet,
 )
 from fontvertx.gui.tooltips import wrap_tip
@@ -262,7 +261,7 @@ class ConverterWindow(QMainWindow):
 
         self.convert_button = KeyboardPushButton("Convert")
         self._convert_icon = material_icon(
-            "sync_alt", LIGHT.on_primary, size=20, disabled_color=LIGHT.convert_disabled_text
+            "sync_alt", "on_primary", size=20, disabled_color="convert_disabled_text"
         )
         self.convert_button.setIcon(self._convert_icon)
         self.convert_button.setIconSize(QSize(20, 20))
@@ -292,13 +291,11 @@ class ConverterWindow(QMainWindow):
             wrap_tip("Stops the conversion. Files already converted are kept.")
         )
         self.cancel_button.setIcon(
-            material_icon("close", LIGHT.text, size=18, disabled_color=LIGHT.text_disabled)
+            material_icon("close", "text", size=18, disabled_color="text_disabled")
         )
-        self._pause_icon = material_icon(
-            "pause", LIGHT.text, size=18, disabled_color=LIGHT.text_disabled
-        )
+        self._pause_icon = material_icon("pause", "text", size=18, disabled_color="text_disabled")
         self._resume_icon = material_icon(
-            "play_arrow", LIGHT.on_primary, size=18, disabled_color=LIGHT.text_disabled
+            "play_arrow", "on_primary", size=18, disabled_color="text_disabled"
         )
         self.pause_button.setIcon(self._pause_icon)
         for button in (self.pause_button, self.cancel_button):
@@ -326,7 +323,7 @@ class ConverterWindow(QMainWindow):
         self.summary.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.history_button = KeyboardPushButton("View log")
         self.history_button.setObjectName("footerHistory")
-        self.history_button.setIcon(material_icon("visibility", LIGHT.accent, size=16))
+        self.history_button.setIcon(material_icon("visibility", "accent_text", size=16))
         self.history_button.setIconSize(QSize(16, 16))
         self.history_button.hide()
         self.summary_zone = QWidget()
@@ -622,6 +619,7 @@ class ConverterWindow(QMainWindow):
             self.expand_instances_button,
             self.collapse_instances_button,
             self.files,
+            self.files.column_button,
             self.instance_tree,
             self.conversion.combo,
             profile.reset_button,

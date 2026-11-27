@@ -16,7 +16,16 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QBrush, QColor, QCursor, QFont, QFontMetrics, QPainter, QPalette
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QCursor,
+    QFont,
+    QFontMetrics,
+    QIcon,
+    QPainter,
+    QPalette,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QStyle,
@@ -27,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.gui.scanner import ScanWorker, Source
-from fontvertx.gui.styles import LIGHT, chip_font, tabular_font
+from fontvertx.gui.styles import chip_font, colors, tabular_font
 from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import FileTable
 from fontvertx.inspection import FontInfo, incompatibility
@@ -104,7 +113,9 @@ class FontTableModel(QAbstractTableModel):
             return wrap_tip(f"{text}\n{row.reason}" if row.reason else text)
         if role == Qt.ItemDataRole.ForegroundRole and row.reason:
             view = self.parent()
-            muted = view.muted_color if isinstance(view, FileTable) else QColor(LIGHT.text_disabled)
+            muted = (
+                view.muted_color if isinstance(view, FileTable) else QColor(colors().text_disabled)
+            )
             return QBrush(muted)
         return None
 
@@ -205,11 +216,13 @@ def is_group_row(view: QAbstractItemView, index: QModelIndex | QPersistentModelI
 
 def font_row_background(view: QAbstractItemView, index: QModelIndex | QPersistentModelIndex) -> str:
     if view.property("dragOver") == "true":
-        return LIGHT.row_selected_a
+        return colors().row_selected_a
     selection = view.selectionModel()
     if selection is not None and selection.isRowSelected(index.row(), index.parent()):
         return (
-            LIGHT.row_selection if view.window().isActiveWindow() else LIGHT.row_selection_inactive
+            colors().row_selection
+            if view.window().isActiveWindow()
+            else colors().row_selection_inactive
         )
     point = view.viewport().mapFromGlobal(QCursor.pos())
     if view.viewport().rect().contains(point):
@@ -221,8 +234,8 @@ def font_row_background(view: QAbstractItemView, index: QModelIndex | QPersisten
             and hovered.row() == index.row()
             and hovered.parent() == index.parent()
         ):
-            return LIGHT.table_header if is_group_row(view, index) else LIGHT.row_hover
-    return LIGHT.list_alt if is_group_row(view, index) else LIGHT.surface
+            return colors().table_header if is_group_row(view, index) else colors().row_hover
+    return colors().list_alt if is_group_row(view, index) else colors().surface
 
 
 class FontRowDelegate(QStyledItemDelegate):
@@ -241,7 +254,7 @@ class FontRowDelegate(QStyledItemDelegate):
             return
         rect = option.rect
         painter.save()
-        painter.setPen(QColor(LIGHT.row_separator))
+        painter.setPen(QColor(colors().row_separator))
         painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
         if (
             index.column() == 0
@@ -249,7 +262,44 @@ class FontRowDelegate(QStyledItemDelegate):
             and view.currentIndex().isValid()
             and view.currentIndex().row() == index.row()
         ):
-            painter.fillRect(rect.left(), rect.top(), 2, rect.height(), QColor(LIGHT.accent))
+            painter.fillRect(rect.left(), rect.top(), 2, rect.height(), QColor(colors().accent))
+        painter.restore()
+
+    def paint_row_tail(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """The part of a table row past its last column, painted like an empty cell.
+
+        ``option`` is the view's item option for the strip (rect and state) and ``index``
+        the row's last cell: the background goes through the same path as the cells
+        (hover, drag tint, stylesheet selection colors), without any content.
+        """
+        display_option = QStyleOptionViewItem(option)
+        self.initStyleOption(display_option, index)
+        self.prepare_row(display_option, index)
+        display_option.text = ""
+        display_option.icon = QIcon()
+        display_option.features &= ~(
+            QStyleOptionViewItem.ViewItemFeature.HasDisplay
+            | QStyleOptionViewItem.ViewItemFeature.HasDecoration
+            | QStyleOptionViewItem.ViewItemFeature.HasCheckIndicator
+        )
+        if display_option.backgroundBrush.style() != Qt.BrushStyle.NoBrush:
+            painter.fillRect(display_option.rect, display_option.backgroundBrush)
+        if display_option.widget is not None:
+            display_option.widget.style().drawControl(
+                QStyle.ControlElement.CE_ItemViewItem,
+                display_option,
+                painter,
+                display_option.widget,
+            )
+        rect = option.rect
+        painter.save()
+        painter.setPen(QColor(colors().row_separator))
+        painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
         painter.restore()
 
     def prepare_row(
@@ -268,15 +318,15 @@ class FontRowDelegate(QStyledItemDelegate):
             index.column() == 4 if isinstance(view, QTreeView) else index.column() in (4, 5)
         )
         if selected or (group and index.column() == 0):
-            option.palette.setColor(QPalette.ColorRole.Text, QColor(LIGHT.text))
-            option.palette.setColor(QPalette.ColorRole.HighlightedText, QColor(LIGHT.text))
+            option.palette.setColor(QPalette.ColorRole.Text, QColor(colors().text))
+            option.palette.setColor(QPalette.ColorRole.HighlightedText, QColor(colors().text))
         elif (
             text_column
             and not group
             and state in (Qt.CheckState.Unchecked, 0)
             and (isinstance(view, QTreeView) or not index.data(_REASON_ROLE))
         ):
-            option.palette.setColor(QPalette.ColorRole.Text, QColor(LIGHT.text_dim))
+            option.palette.setColor(QPalette.ColorRole.Text, QColor(colors().text_dim))
 
     def paint(
         self,
@@ -330,7 +380,7 @@ class FontNameDelegate(FontRowDelegate):
         painter.save()
         painter.setClipRect(option.rect)
         painter.setFont(display_option.font)
-        painter.setPen(QColor(LIGHT.text_muted))
+        painter.setPen(QColor(colors().text_muted))
         painter.drawText(rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, text)
         painter.restore()
 
@@ -361,8 +411,8 @@ class FontBadgeDelegate(FontRowDelegate):
             return
 
         # Format chips: monospaced, pill-shaped, accent on tint.
-        background = QColor(LIGHT.accent_tint)
-        foreground = QColor(LIGHT.accent)
+        background = QColor(colors().accent_tint)
+        foreground = QColor(colors().accent_text)
         font = chip_font()
         metrics = QFontMetrics(font)
         max_text_width = max(0, option.rect.width() - 20)

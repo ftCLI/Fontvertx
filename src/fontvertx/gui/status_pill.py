@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.gui.icons import material_icon
-from fontvertx.gui.styles import FOOTER_HEIGHT, LIGHT, mono_family
+from fontvertx.gui.styles import FOOTER_HEIGHT, ColorToken, colors, mono_family, resolve_color
 from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import ElidedLabel, KeyboardPushButton, centered_icon_pixels
 from fontvertx.gui.worker import format_duration
@@ -248,7 +248,7 @@ class StatusIcon(QLabel):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         if self._circle:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(LIGHT.surface))
+            painter.setBrush(QColor(colors().surface))
             painter.drawEllipse(QRectF(self.rect()))
         ratio = painter.device().devicePixelRatioF()
         glyph_px, offset_px = centered_icon_pixels(self.width(), self._glyph, ratio)
@@ -272,10 +272,11 @@ class ConversionProgress(QProgressBar):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setRange(0, 1)
         self.setValue(0)
-        self.track = LIGHT.running_track
-        self.fill = LIGHT.accent
+        # Palette tokens, resolved at each paint so the bar follows a theme switch.
+        self.track: ColorToken = "running_track"
+        self.fill: ColorToken = "accent"
 
-    def set_colors(self, track: str, fill: str) -> None:
+    def set_colors(self, track: ColorToken, fill: ColorToken) -> None:
         self.track, self.fill = track, fill
         self.update()
 
@@ -292,12 +293,12 @@ class ConversionProgress(QProgressBar):
         radius = self.height() / 2
         track = QPainterPath()
         track.addRoundedRect(QRectF(self.rect()), radius, radius)
-        painter.fillPath(track, QColor(self.track))
+        painter.fillPath(track, QColor(resolve_color(self.track)))
         width = self.width() * self.fraction
         if width > 0:
             fill = QPainterPath()
             fill.addRoundedRect(QRectF(0, 0, width, self.height()), radius, radius)
-            painter.fillPath(fill.intersected(track), QColor(self.fill))
+            painter.fillPath(fill.intersected(track), QColor(resolve_color(self.fill)))
 
 
 class SegmentLabel(QWidget):
@@ -418,7 +419,7 @@ class StatusChip(QFrame):
         icon = self._icons.get(icon_name)
         if icon is None:
             icon = self._icons[icon_name] = material_icon(
-                icon_name, LIGHT.on_primary, size=CHIP_ICON_SIZE
+                icon_name, "on_primary", size=CHIP_ICON_SIZE
             )
         self.icon.set_icon(icon)
         self.icon_name = icon_name
@@ -430,19 +431,19 @@ class StatusChip(QFrame):
             widget.style().polish(widget)
 
 
-# Notice glyph per tone: (icon name, color, on a white circle).
+# Notice glyph per tone: (icon name, color token, on a white circle).
 _TONE_GLYPHS = {
     # Weight 600, like the step badges: weight 400 is too thin at 14px.
-    "success": ("check_wght600", LIGHT.success_icon, True),
-    "warning": ("priority_high", LIGHT.warn_fg, True),
-    "error": ("priority_high", LIGHT.danger, True),
+    "success": ("check_wght600", "success_icon", True),
+    "warning": ("priority_high", "warn_fg", True),
+    "error": ("priority_high", "danger", True),
 }
 _TONE_TEXT = {
-    "running": LIGHT.primary_tint_fg,
-    "success": LIGHT.success_icon,
-    "warning": LIGHT.warn_fg,
-    "error": LIGHT.danger,
-    "neutral": LIGHT.slate,
+    "running": "primary_tint_fg",
+    "success": "success_icon",
+    "warning": "warn_fg",
+    "error": "danger",
+    "neutral": "slate",
 }
 
 
@@ -596,9 +597,7 @@ class StatusPill(QWidget):
         self.icon.setVisible(notice and tone in self._icons)
         self.label.setVisible(notice)
         self.close_button.setVisible(notice)
-        self.close_button.setIcon(
-            material_icon("close", _TONE_TEXT.get(tone, LIGHT.slate), size=16)
-        )
+        self.close_button.setIcon(material_icon("close", _TONE_TEXT.get(tone, "slate"), size=16))
 
         self.run_view.setVisible(active)
         if active:
@@ -621,9 +620,10 @@ class StatusPill(QWidget):
             self.setAccessibleDescription(
                 " · ".join(part for part in (title, f"{done} / {total}", line) if part)
             )
+            # Paused is a warning tone, amber like the card: never grey (that is CANCELLED).
             self.progress.set_colors(
-                LIGHT.border_strong if paused else LIGHT.running_track,
-                LIGHT.control_border_strong if paused else LIGHT.accent,
+                "warn_fill" if paused else "running_track",
+                "warn_border" if paused else "accent",
             )
 
         self.chip.setVisible(final)
@@ -671,20 +671,20 @@ class StatusPill(QWidget):
         icon = self._icon_cache.get(key)
         if icon is None:
             icon = self._icon_cache[key] = material_icon(
-                name, color, size=ACTION_ICON_SIZE, disabled_color=LIGHT.text_disabled
+                name, color, size=ACTION_ICON_SIZE, disabled_color="text_disabled"
             )
         return icon
 
     def _sync_action_icons(self, tone: str) -> None:
         for button, name in self._icon_names.items():
             if button.property("danger"):
-                color = LIGHT.danger
+                color = "danger"
             elif tone == "success":
-                color = LIGHT.success_icon
-            elif tone == "warning" and self.state is not StatusState.PAUSED:
-                color = LIGHT.warn_fg
+                color = "success_icon"
+            elif tone == "warning":  # warnings and the paused run
+                color = "warn_fg"
             else:
-                color = LIGHT.slate
+                color = "slate"
             button.setIcon(self._action_icon(name, color))
 
     def set_compact(self, compact: bool) -> None:

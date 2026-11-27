@@ -15,7 +15,7 @@ from collections.abc import Callable
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPalette
 from PySide6.QtWidgets import QApplication, QToolTip
 
-from fontvertx.gui.styles import LIGHT, ui_font
+from fontvertx.gui.styles import colors, ui_font
 
 TOOLTIP_FONT_PIXELS = 12
 TOOLTIP_WRAP_WIDTH = 400  # pixels of text, padding excluded
@@ -39,7 +39,7 @@ def tooltip_font() -> QFont:
 
 def tooltip_palette() -> QPalette:
     palette = QPalette(QToolTip.palette())
-    background, text = QColor(LIGHT.tooltip_bg), QColor(LIGHT.tooltip_text)
+    background, text = QColor(colors().tooltip_bg), QColor(colors().tooltip_text)
     for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
         palette.setColor(group, QPalette.ColorRole.ToolTipBase, background)
         palette.setColor(group, QPalette.ColorRole.ToolTipText, text)

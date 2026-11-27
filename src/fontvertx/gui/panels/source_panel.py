@@ -40,11 +40,10 @@ from fontvertx.gui.settings_store import OPTIONAL_FONT_COLUMNS
 from fontvertx.gui.styles import (
     BUTTON_HEIGHT,
     FIELD_HEIGHT,
-    LIGHT,
     SCAN_LABEL_PIXEL_SIZE,
+    colors,
     mono_font,
 )
-from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import (
     IMPORT_BUTTON_HEIGHT,
     DropZone,
@@ -82,14 +81,14 @@ class ScanProgress(QProgressBar):
         radius = self.height() / 2
         track = QPainterPath()
         track.addRoundedRect(QRectF(self.rect()), radius, radius)
-        painter.fillPath(track, QColor(LIGHT.progress_track))
+        painter.fillPath(track, QColor(colors().progress_track))
         painter.setClipPath(track)
         span = self.maximum() - self.minimum()
         fraction = max(0.0, min(1.0, (self.value() - self.minimum()) / span)) if span else 0
         width = self.width() * fraction
         fill = QPainterPath()
         fill.addRoundedRect(QRectF(0, 0, width, self.height()), min(radius, width / 2), radius)
-        painter.fillPath(fill, QColor(LIGHT.accent))
+        painter.fillPath(fill, QColor(colors().accent))
 
 
 class ListStatusLabel(ElidedLabel):
@@ -119,8 +118,8 @@ class GhostIconButton(KeyboardPushButton):
 
     def __init__(self, icon: str) -> None:
         super().__init__()
-        self._rest = material_icon(icon, LIGHT.text_muted, 16, disabled_color=LIGHT.text_disabled)
-        self._active = material_icon(icon, LIGHT.text, 16, disabled_color=LIGHT.text_disabled)
+        self._rest = material_icon(icon, "text_muted", 16, disabled_color="text_disabled")
+        self._active = material_icon(icon, "text", 16, disabled_color="text_disabled")
         self.setIcon(self._rest)
 
     def enterEvent(self, event: QEnterEvent) -> None:
@@ -208,7 +207,7 @@ def build_source_card(window: ConverterWindow) -> QGroupBox:
     # Replace the style's raster clear glyph with the vector one (sharp at any scale).
     clear_action = w.font_filter.findChild(QAction, "_q_qlineeditclearaction")
     if clear_action is not None:
-        clear_action.setIcon(material_icon("close", LIGHT.text_muted, 16))
+        clear_action.setIcon(material_icon("close", "text_muted", 16))
     w.font_filter.setToolTip("Filter fonts by name, family, style, format, outlines, or UPM.")
     w.font_filter.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     w.file_options_row = QBoxLayout(QBoxLayout.Direction.LeftToRight)
@@ -227,9 +226,20 @@ def build_source_card(window: ConverterWindow) -> QGroupBox:
     w.file_list = FontFileList(w.files, w._compatibility_profile)
     w.column_menu = QMenu(w.files)
     table_header = w.files.horizontalHeader()
-    table_header.setToolTip("Click to sort; right-click to choose optional columns.")
+    table_header.setToolTip("Click to sort.")
     table_header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     table_header.customContextMenuRequested.connect(w._show_column_menu)
+    w.files.column_button.attach_menu(w.column_menu, w.files)
+    # Every column is listed: the fixed ones checked and disabled, then the optional ones.
+    for column, name in enumerate(w.file_list.model.HEADERS):
+        if column in OPTIONAL_FONT_COLUMNS:
+            continue
+        action = w.column_menu.addAction(name)
+        action.setData(column)
+        action.setCheckable(True)
+        action.setChecked(True)
+        action.setEnabled(False)
+    w.column_menu.addSeparator()
     for column, (name, key) in OPTIONAL_FONT_COLUMNS.items():
         visible = w.store.get_bool(key)
         w.files.setColumnHidden(column, not visible)
@@ -243,19 +253,12 @@ def build_source_card(window: ConverterWindow) -> QGroupBox:
     w.file_list.scan_finished.connect(w._on_scan_finished)
     w.file_list.scan_failed.connect(w._on_scan_failed)
     w.files.setMinimumHeight(150)
-    w.files.setToolTip("Check the fonts to convert. Click a column header to sort.")
     w.file_list.model.dataChanged.connect(w._on_file_item_changed)
     w.instance_tree = InstanceTree()
     w.font_filter.textChanged.connect(w.instance_tree.set_filter)
     w.font_filter.textChanged.connect(w.file_list.proxy.setFilterFixedString)
     w.font_filter.textChanged.connect(w._update_buttons)
     w.instance_tree.setMinimumHeight(150)
-    w.instance_tree.setToolTip(
-        wrap_tip(
-            "Check instances to export. Double-click a custom instance to edit it; "
-            "right-click it or press Shift+F10 for actions, or Delete to remove it."
-        )
-    )
     w.instance_tree.checksChanged.connect(w._update_buttons)
     w.expand_instances_button.clicked.connect(w.instance_tree.expandAll)
     w.collapse_instances_button.clicked.connect(w.instance_tree.collapseAll)

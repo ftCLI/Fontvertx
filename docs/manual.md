@@ -1,6 +1,6 @@
 # Fontvertx — User Manual
 
-Version 1.1.0 · November 2026
+Version 1.2.0 · November 2026
 
 ## Contents
 
@@ -153,6 +153,8 @@ The **footer** is where conversions run. Before a run it shows the selection sum
 
 **Adaptive layout.** On wide windows the font list stays beside the conversion and output cards, which scroll independently when needed. On narrow windows the sections stack vertically.
 
+**Light and dark theme.** The window follows the system's appearance: light or dark, as set in Windows (*Settings → Personalization → Colors*), macOS (*System Settings → Appearance*) or your Linux desktop. Change it while Fontvertx is open and the window switches at once, during a conversion too. There is no theme setting in the app.
+
 **Card states.** Cards 1 and 2 show a check mark when the step is valid (fonts selected, profile chosen). Card 3 shows a **Modified** chip when the options differ from the factory defaults; the **Reset** button next to its title restores them. Until a profile is chosen, card 3 shows *No options yet*.
 
 ---
@@ -193,7 +195,8 @@ You can pick a profile before adding fonts. No profile is preselected when the a
 
 The font table shows each file's name, format, outline type (TrueType or PostScript) and UPM.
 
-- **Optional columns** — right-click the table header to show the **Family** and **Style** columns. The choice is remembered. Filtering searches these fields even when the columns are hidden.
+- **Optional columns** — the **Show columns** button at the right end of the table header (or a right-click on the header) shows the **Family** and **Style** columns. The choice is remembered. Filtering searches these fields even when the columns are hidden.
+- **Column widths** — drag a divider in the header to resize the column on its left; the next resizable column to its right gives or takes the space. Double-click a divider to fit the column to its content. **Format**, **Outlines** and **UPM** have a fixed width that fits their content, and **Name** fills the remaining space.
 - **Sorting** — click a column header.
 - **Filter** — the *Filter fonts…* field filters by name, family, style, format, outlines or UPM.
 - **Selection** — check the fonts to convert. The checkbox at the top selects or clears all visible compatible fonts.
@@ -306,14 +309,16 @@ With **Variable → Static** selected, the font list becomes a tree: each variab
 ### 6.1 Add a custom instance
 
 1. Select a font or one of its instances.
-2. Press **Add custom instance…** (or the **Ins** key).
+2. Press the **+ Instance** button in the font's row (it appears on the selected font, and faintly on the one under the pointer), right-click the font and choose **Add custom instance…**, or press **Ins**.
 3. In the *Axis values for …* dialog, enter one value per axis; the allowed range is shown beside each axis. A preview shows the resulting file name.
 4. Confirm. If an instance with the same coordinates already exists, Fontvertx tells you and selects the existing one.
 
 ### 6.2 Edit or remove a custom instance
 
-- Double-click a custom instance to edit it.
-- Right-click (or **Shift+F10**) for the context menu: **Edit custom instance…**, **Remove instance**.
+Custom instances carry a **Custom** chip in the Format column; hovering one reminds you how to edit or remove it.
+
+- Double-click a custom instance, or select it and press **Enter**, to edit it.
+- Right-click (or **Shift+F10**) for the context menu: **Edit custom instance…**, **Remove instance**. Named and default instances have no context menu.
 - **Delete** removes the selected custom instance.
 
 Use **Expand all** / **Collapse all** to expand or collapse every variable font, and the *Filter fonts or instances…* field to search by name, coordinates or path.
@@ -399,7 +404,9 @@ When the run ends, the footer shows a colored chip with the outcome, the counts 
 - **Cancelled** — *n* of *total* converted · *time*
 - **Error** (red) — conversion stopped · *n* converted · *time*
 
-On the right: **View log** (highlighted in red when some fonts failed), **Open output folder** and **Convert**, ready for another run. When the cards are stacked (narrow window), View log and Open output folder become icon buttons; hover over them for their names.
+In the dark theme, failures and errors are amber like warnings and pauses, instead of red.
+
+On the right: **View log** (highlighted when some fonts failed: red, or amber in the dark theme), **Open output folder** and **Convert**, ready for another run. When the cards are stacked (narrow window), View log and Open output folder become icon buttons; hover over them for their names.
 
 ### 8.3 The log window
 
@@ -547,7 +554,7 @@ Fontvertx remembers across sessions:
 - the rights confirmation, if you chose **Remember this choice**;
 - window size and position.
 
-The conversion profile is not remembered: you choose it again at every launch.
+The conversion profile is not remembered: you choose it again at every launch. The light or dark theme is not a preference either: it always follows the system (§3).
 
 To restore a profile's options to the factory defaults, use **Reset** in card 3; to remove the output organization, use **Restore defaults** in the *Organize output* dialog.
 
@@ -560,8 +567,9 @@ To restore a profile's options to the factory defaults, use **Reset** in card 3;
 | **Ctrl+Enter** | Start the conversion (does nothing while a run is in progress) |
 | **Ins** | Add a custom instance (instance tree) |
 | **Delete** | Remove the selected custom instance |
-| **Shift+F10** | Context menu of the selected instance |
-| **Double-click** | Edit a custom instance |
+| **Shift+F10** | Context menu of the selected font or custom instance (instance tree) |
+| **Enter** | Expand or collapse the selected font, or edit the selected custom instance (instance tree) |
+| **Double-click** | Edit a custom instance, or expand or collapse a font (instance tree) |
 | **Enter** / **Space** | Activate the focused button |
 
 On macOS, Ctrl maps to Cmd following Qt conventions.
@@ -582,6 +590,7 @@ On macOS, Ctrl maps to Cmd following Qt conventions.
 | Converted files have a `#1`, `#2` … suffix | A file with the same name already existed. Enable **Overwrite existing files** to replace it. |
 | *One or more selected inputs no longer exist.* | Some files were moved or deleted after being added: remove them or reload the list. |
 | The conversion seems stuck on a font | Try **Pause** or **Cancel**; as a last resort close the window and choose **Force close** (§8.4). Check the log file (§10). |
+| The window stays light although the system is dark (Linux) | Fontvertx follows the color scheme your desktop reports; when it reports none, the window is light. Check your desktop's appearance setting (for example *Settings → Appearance* in GNOME). |
 | TTF → OTF output has too many points | Increase **Tolerance** or try **Contour simplification** (experimental). |
 
 To report a problem, open an issue on [GitHub](https://github.com/ftCLI/Fontvertx/issues) and attach the `fontvertx.log` file or the run's JSON Lines export.

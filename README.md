@@ -1,7 +1,7 @@
 # Fontvertx
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ftCLI/Fontvertx/v1.1.0/src/fontvertx/assets/fontvertx-256.png" alt="Fontvertx logo" width="160" height="160">
+  <img src="https://raw.githubusercontent.com/ftCLI/Fontvertx/v1.2.0/src/fontvertx/assets/fontvertx-256.png" alt="Fontvertx logo" width="160" height="160">
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
 
 Fontvertx converts fonts between TrueType, PostScript (CFF), WOFF and WOFF2, extracts individual fonts from TTC/OTC collections, and exports variable-font instances as static fonts. It comes as a desktop app (GUI) and a command-line tool (CLI) that share the same conversion engine.
 
-![Fontvertx main window](https://raw.githubusercontent.com/ftCLI/Fontvertx/v1.1.0/docs/images/fontvertx-main-window.png)
+![Fontvertx main window](https://raw.githubusercontent.com/ftCLI/Fontvertx/v1.2.0/docs/images/fontvertx-main-window.png)
 
 ## Features
 
@@ -21,6 +21,7 @@ Fontvertx converts fonts between TrueType, PostScript (CFF), WOFF and WOFF2, ext
 - **Organized output** — build a folder structure from font properties and conversion settings.
 - **Controllable batches** — pause, resume or cancel mid-run; incompatible fonts are explained, not silently skipped.
 - **One engine** — the GUI and the CLI produce identical results.
+- **Light and dark** — the app follows your system's light or dark appearance, and switches with it while open.
 
 ## Conversions
 
@@ -43,7 +44,7 @@ Download the zip for your system from the [latest release](https://github.com/ft
 - **Windows 10 or 11 (64-bit):** `Fontvertx-<version>-windows-x64.zip` — unzip and run `Fontvertx.exe`.
 - **macOS 14.4 or later, Apple Silicon:** `Fontvertx-<version>-macos-arm64.zip` — unzip and move `Fontvertx.app` to Applications.
 
-The apps are not signed, so Windows and macOS warn you on first launch. The [manual](https://github.com/ftCLI/Fontvertx/blob/v1.1.0/docs/manual.md#22-ready-to-run-app-windows-and-macos) explains how to open them.
+The apps are not signed, so Windows and macOS warn you on first launch. The [manual](https://github.com/ftCLI/Fontvertx/blob/v1.2.0/docs/manual.md#22-ready-to-run-app-windows-and-macos) explains how to open them.
 
 ### With Python (3.12 or later)
 
@@ -81,7 +82,7 @@ Run `fontvertx-cli --help` or `fontvertx-cli <conversion> --help` for every opti
 
 ## Documentation
 
-The **[user manual](https://github.com/ftCLI/Fontvertx/blob/v1.1.0/docs/manual.md)** covers every conversion and option, variable-font instances, output organization, the CLI, logs and troubleshooting.
+The **[user manual](https://github.com/ftCLI/Fontvertx/blob/v1.2.0/docs/manual.md)** covers every conversion and option, variable-font instances, output organization, the CLI, logs and troubleshooting.
 
 ## Development
 
@@ -98,7 +99,7 @@ The ready-to-run apps are built with PyInstaller: `.\packaging\windows\build.ps1
 
 ## License
 
-MIT — see [LICENSE](https://github.com/ftCLI/Fontvertx/blob/v1.1.0/LICENSE).
+MIT — see [LICENSE](https://github.com/ftCLI/Fontvertx/blob/v1.2.0/LICENSE).
 
 ## Acknowledgments
 

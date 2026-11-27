@@ -19,6 +19,16 @@ def _isolated_log_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _light_palette() -> Iterator[None]:
+    """Each test ends in the light theme, even one that failed after switching to dark."""
+    yield
+    from fontvertx.gui import theme
+    from fontvertx.gui.styles import LIGHT
+
+    theme.apply_palette(LIGHT, None)
+
+
+@pytest.fixture(autouse=True)
 def _destroy_qt_widgets() -> Iterator[None]:
     """Never leave Qt widgets to Python's garbage collector.
 

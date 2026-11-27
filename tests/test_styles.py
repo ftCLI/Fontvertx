@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QCursor, QFont, QImage, QPalette, QStandardItemModel
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -25,11 +26,12 @@ from PySide6.QtWidgets import (
 )
 
 from fontvertx.gui import styles
+from fontvertx.gui import widgets as widgets_module
 from fontvertx.gui import window as window_module
 from fontvertx.gui.file_list import FontFileList, FontRowDelegate
 from fontvertx.gui.instance_tree import InstanceTree
 from fontvertx.gui.status_pill import StatusState
-from fontvertx.gui.styles import LIGHT, build_stylesheet
+from fontvertx.gui.styles import DARK, LIGHT, Palette, build_stylesheet
 from fontvertx.gui.widgets import FileTable
 from fontvertx.gui.window import ConverterWindow
 from fontvertx.inspection import FontInfo, NamedInstanceInfo
@@ -45,8 +47,12 @@ def icon_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return directory
 
 
-def test_palette_values_are_hex_colors() -> None:
-    for name, value in vars(LIGHT).items():
+PALETTES = pytest.mark.parametrize("palette", [LIGHT, DARK], ids=["light", "dark"])
+
+
+@PALETTES
+def test_palette_values_are_hex_colors(palette: Palette) -> None:
+    for name, value in vars(palette).items():
         assert HEX.match(value), f"{name}={value}"
 
 
@@ -70,6 +76,72 @@ def test_hint_text_contrast_on_page_and_cards() -> None:
             assert _contrast(foreground, background) >= 4.5
     for background in (LIGHT.surface, LIGHT.page, LIGHT.accent_tint, LIGHT.field):
         assert _contrast(LIGHT.text_muted, background) >= 4.5
+
+
+@PALETTES
+def test_text_contrast_on_every_background(palette: Palette) -> None:
+    for name in (
+        "page",
+        "surface",
+        "field",
+        "field_hover",
+        "accent_tint",
+        "table_header",
+        "disabled_bg",
+    ):
+        ratio = _contrast(palette.text, getattr(palette, name))
+        assert ratio >= 4.5, f"text on {name}: {ratio:.2f}"
+    for name in ("accent_tint", "surface"):
+        ratio = _contrast(palette.accent_text, getattr(palette, name))
+        assert ratio >= 4.5, f"accent_text on {name}: {ratio:.2f}"
+
+
+@PALETTES
+def test_white_text_contrast_on_filled_controls_and_chips(palette: Palette) -> None:
+    for name in (
+        "primary",
+        "primary_hover",
+        "accent_pressed",
+        "chip_running_bg",
+        "chip_success_bg",
+        "chip_error_bg",
+        "chip_neutral_bg",
+        "warn_accent",
+    ):
+        ratio = _contrast(palette.on_primary, getattr(palette, name))
+        assert ratio >= 4.5, f"on_primary on {name}: {ratio:.2f}"
+
+
+@PALETTES
+def test_non_text_marks_contrast(palette: Palette) -> None:
+    # WCAG 1.4.11: checked fills, focus rings and unchecked borders need 3:1.
+    for name in ("accent", "control_border_off"):
+        ratio = _contrast(getattr(palette, name), palette.surface)
+        assert ratio >= 3, f"{name} on surface: {ratio:.2f}"
+
+
+def test_dark_errors_warnings_and_pause_share_one_amber() -> None:
+    assert DARK.danger == DARK.warn_fg
+    assert DARK.chip_error_bg == DARK.warn_accent
+    assert DARK.danger_bg == DARK.warn_bg
+    assert DARK.danger_border == DARK.warn_border
+    # The paused bar's border shows on its fill at least as much as in the light theme.
+    assert _contrast(DARK.warn_border, DARK.warn_fill) >= 2.0
+    assert _contrast(LIGHT.warn_border, LIGHT.warn_fill) >= 2.0
+    # The checked Overwrite box and the UPM mark: amber on the card.
+    assert _contrast(DARK.warn_accent, DARK.surface) >= 3
+
+
+def test_dark_keeps_disabled_convert_deliberately_dim() -> None:
+    ratio = _contrast(DARK.convert_disabled_text, DARK.footer_disabled_bg)
+    assert 2.5 <= ratio <= 3
+
+
+def test_light_chip_fills_match_their_former_tokens() -> None:
+    assert LIGHT.chip_running_bg == LIGHT.accent
+    assert LIGHT.chip_success_bg == LIGHT.success_icon
+    assert LIGHT.chip_error_bg == LIGHT.danger
+    assert LIGHT.chip_neutral_bg == LIGHT.slate
 
 
 def test_accent_contrast() -> None:
@@ -314,11 +386,19 @@ def test_state_and_badge_text_meets_contrast_requirement() -> None:
         assert _contrast(foreground, background) >= 4.5
 
 
+def test_dark_stylesheet_has_no_unresolved_tokens(icon_dir: Path) -> None:
+    sheet = build_stylesheet(DARK)
+    assert not re.search(r"\$[a-z_]+", sheet)
+    assert DARK.page in sheet
+    assert f"expand_more_{DARK.text_muted[1:]}.svg" in sheet
+
+
 def test_stylesheet_has_no_unresolved_tokens(icon_dir: Path) -> None:
     sheet = build_stylesheet(LIGHT)
     assert not re.search(r"\$[a-z_]+", sheet)
     assert LIGHT.page in sheet
-    assert re.findall(r"image: (\S+);", sheet).count("none") == 2
+    # The two existing ones, plus the column menu button's (hidden) menu indicator.
+    assert re.findall(r"image: (\S+);", sheet).count("none") == 3
     assert "QComboBox::down-arrow" in sheet
     for name in ("arrow_downward", "arrow_upward", "expand_more", "expand_less"):
         assert f"{name}_{LIGHT.text_muted[1:]}.svg" in sheet
@@ -354,14 +434,16 @@ def test_table_header_aligns_when_scrollbar_appears(qapp: QApplication) -> None:
     table.resize(650, 200)
     table.show()
     qapp.processEvents()
-    assert table.verticalScrollBar().maximum() == 0
+    bar = table.verticalScrollBar()
+    assert bar.maximum() == 0 and not bar.isVisible()
     width_before = table.columnWidth(0)
     model.setRowCount(100)
     QTest.qWait(30)
-    bar = table.verticalScrollBar()
     header = table.horizontalHeader()
-    assert bar.maximum() > 0
-    assert table.columnWidth(0) == width_before - bar.width()
+    assert bar.maximum() > 0 and bar.isVisible()
+    # The columns end at the fixed-width header corner, which covers the band above the
+    # scrollbar: they keep their width when the bar appears.
+    assert table.columnWidth(0) == width_before
     for column in range(4):
         assert header.sectionViewportPosition(column) == table.columnViewportPosition(column)
     assert bar.mapTo(table, QPoint(0, 0)).y() >= header.geometry().bottom()
@@ -388,6 +470,7 @@ def test_table_scrollbar_header_filler_tracks_visibility(
     bar = table.verticalScrollBar()
     cap = table._scrollbar_header_cap
 
+    corner = table.column_button
     for rows, width in ((100, 650), (100, 700), (0, 700), (100, 700), (0, 650)):
         table.resize(width, 200)
         model.setRowCount(rows)
@@ -395,8 +478,14 @@ def test_table_scrollbar_header_filler_tracks_visibility(
         # short wait is not enough on slow CI runners).
         expected = rows > 0
         qtbot_wait(lambda e=expected: cap.isVisible() == bar.isVisible() == e, 2.0)
+        # The button (the header corner) is there either way, 32px wide, over the cap.
+        assert corner.isVisible() and corner.width() == widgets_module.HEADER_CORNER_WIDTH
+        assert corner.geometry().right() == table.contentsRect().right()
+        assert corner.geometry().top() == header.geometry().top()
+        assert corner.height() == header.height()
         if not rows:
             continue
+        assert corner.geometry().contains(QRect(cap.mapTo(table, QPoint(0, 0)), cap.size()))
         cap_pos = cap.mapTo(table, QPoint(0, 0))
         bar_pos = bar.mapTo(table, QPoint(0, 0))
         assert cap_pos.x() == bar_pos.x()
@@ -475,6 +564,58 @@ def _selector_block(sheet: str, selector_pattern: str) -> str:
     return match.group(1)
 
 
+def test_header_sections_have_right_separator_except_last(icon_dir: Path) -> None:
+    sheet = build_stylesheet(LIGHT)
+    section = _selector_block(
+        sheet,
+        r"QTableView#fontFileTable QHeaderView::section,\s*"
+        r"QTreeWidget#instanceTree QHeaderView::section",
+    )
+    assert f"border-right: 1px solid {LIGHT.border_strong};" in section
+    # The border replaces 1px of the 3px padding: label positions do not move.
+    assert "padding-right: 2px;" in section
+    last = _selector_block(
+        sheet,
+        r"QTableView#fontFileTable QHeaderView::section:last,\s*"
+        r"QTableView#fontFileTable QHeaderView::section:only-one,\s*"
+        r"QTreeWidget#instanceTree QHeaderView::section:last,\s*"
+        r"QTreeWidget#instanceTree QHeaderView::section:only-one",
+    )
+    assert "border-right: none;" in last
+    assert "padding-right: 3px;" in last
+    # Separators belong to the header only: rows and the scrollbar filler get none.
+    assert "border-right" not in _selector_block(sheet, r"QWidget#tableScrollbarHeader")
+    assert "border-right" not in _selector_block(
+        sheet, r"QHeaderView::section, QTableCornerButton::section"
+    )
+
+
+def test_header_separators_render_between_sections_only(qapp: QApplication) -> None:
+    table = FileTable()
+    table.setStyleSheet(build_stylesheet(LIGHT))
+    model = QStandardItemModel(100, 6, table)
+    table.setModel(model)
+    table.configure_columns()
+    table.resize(650, 200)
+    table.show()
+    QTest.qWait(30)
+    header = table.horizontalHeader()
+    visible = [c for c in range(model.columnCount()) if not header.isSectionHidden(c)]
+    assert len(visible) > 1
+    image = header.grab().toImage()
+    scale = image.width() / header.width()
+    y = round(header.height() / 2 * scale)
+
+    def right_edge(column: int) -> QColor:
+        x = header.sectionViewportPosition(column) + header.sectionSize(column) - 1
+        return image.pixelColor(round(x * scale), y)
+
+    for column in visible[:-1]:
+        assert right_edge(column) == QColor(LIGHT.border_strong)
+    assert right_edge(visible[-1]) == QColor(LIGHT.table_header)
+    table.close()
+
+
 def test_checkbox_and_row_selection_tokens_are_applied(icon_dir: Path) -> None:
     sheet = build_stylesheet(LIGHT)
     checked = _selector_block(
@@ -526,6 +667,50 @@ def test_indicator_mark_falls_back_to_none_when_missing(
 
 def test_stylesheet_is_cached(qapp: QApplication) -> None:
     assert styles.stylesheet() is styles.stylesheet()
+
+
+def test_stylesheet_is_built_from_the_active_palette(qapp: QApplication) -> None:
+    assert styles.colors() is LIGHT
+    assert styles.stylesheet() == build_stylesheet(LIGHT)
+
+
+def test_set_palette_reports_a_change_and_switches_the_stylesheet(qapp: QApplication) -> None:
+    other = dataclasses.replace(LIGHT, page="#123456")
+    try:
+        assert styles.set_palette(LIGHT) is False
+        assert styles.set_palette(other) is True
+        assert styles.colors() is other
+        assert "#123456" in styles.stylesheet()
+    finally:
+        styles.set_palette(LIGHT)
+    assert styles.stylesheet() == build_stylesheet(LIGHT)
+
+
+def test_mono_family_change_rebuilds_the_stylesheet(qapp: QApplication) -> None:
+    original = styles.mono_family()
+    try:
+        styles.set_mono_family("Fontvertx Test Mono")
+        assert "Fontvertx Test Mono" in styles.stylesheet()
+    finally:
+        styles.set_mono_family(original)
+    assert "Fontvertx Test Mono" not in styles.stylesheet()
+
+
+def test_palette_is_read_through_colors_outside_styles() -> None:
+    """Code outside styles.py reads the current palette, so a theme switch reaches it.
+
+    Only theme.py names LIGHT and DARK, to pick one for the system color scheme.
+    """
+    source = Path(styles.__file__).parent.parent
+    offenders = [
+        f"{path.relative_to(source)}:{number}"
+        for path in sorted(source.rglob("*.py"))
+        if path.name != "styles.py"
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"\b(LIGHT|DARK)\.", line)
+        or (path.name != "theme.py" and re.search(r"\b(LIGHT|DARK)\b", line))
+    ]
+    assert offenders == []
 
 
 @pytest.mark.parametrize("field_type", [QLineEdit, QSpinBox, QDoubleSpinBox])
@@ -876,8 +1061,8 @@ def test_notice_keeps_glyph_and_dismiss(styled_window: ConverterWindow) -> None:
             StatusState.PAUSED,
             LIGHT.warn_bg,
             LIGHT.warn_border,
-            LIGHT.border_strong,
-            LIGHT.control_border_strong,
+            LIGHT.warn_fill,
+            LIGHT.warn_border,
             "Paused",
         ),
     ],
@@ -915,6 +1100,48 @@ def test_footer_card_tone_and_progress_bar(
     image = bar.grab().toImage()
     assert image.pixelColor(bar.width() // 8, 3).name() == fill
     assert image.pixelColor(bar.width() * 3 // 4, 3).name() == track
+
+
+def test_paused_run_stays_amber(styled_window: ConverterWindow) -> None:
+    """Paused uses the amber warning family throughout; grey is only for CANCELLED."""
+    window = styled_window
+    window.resize(1200, 600)
+    window.show()
+    window.converter.outcome.total = 4
+    window.converter.progress_done = 2
+    window.progress.setRange(0, 4)
+    window.progress.setValue(2)
+    window._set_run_status(StatusState.PAUSED)
+    QApplication.processEvents()
+    pill = window.status_pill
+    bar = pill.progress
+    image = bar.grab().toImage()
+    fill = image.pixelColor(bar.width() // 8, 3).name()
+    track = image.pixelColor(bar.width() * 7 // 8, 3).name()
+    assert (fill, track) == (LIGHT.warn_border, LIGHT.warn_fill)
+    grey = {LIGHT.border_strong, LIGHT.control_border_strong, LIGHT.slate}
+    assert not {fill, track} & grey
+    # The run's action icons (View log) are amber too, like the other warning states.
+    for button, name in pill._icon_names.items():
+        expected = pill._action_icon(name, "warn_fg")
+        assert button.icon().cacheKey() == expected.cacheKey()
+    # Resumed: back to the running colors.
+    window._set_run_status(StatusState.RUNNING)
+    QApplication.processEvents()
+    image = bar.grab().toImage()
+    assert image.pixelColor(bar.width() // 8, 3).name() == LIGHT.accent
+
+
+def test_warning_palette_is_one_amber_family() -> None:
+    """warn_accent is amber like the other warn_* tokens; ``warning`` merged into warn_fg."""
+    assert not hasattr(LIGHT, "warning")
+    for name in ("warn_accent", "warn_fg", "warn_border", "warn_fill"):
+        hue = QColor(getattr(LIGHT, name)).hslHue()
+        assert 34 <= hue <= 42, f"{name} hue {hue}"
+    # Chip and checked Overwrite: white on warn_accent; the "Non-standard UPM" mark:
+    # warn_accent on the card.
+    assert _contrast(LIGHT.on_primary, LIGHT.warn_accent) >= 4.5
+    assert _contrast(LIGHT.warn_accent, LIGHT.surface) >= 4.5
 
 
 def test_run_title_tones_and_paused_hint(styled_window: ConverterWindow) -> None:

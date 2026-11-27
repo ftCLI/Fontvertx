@@ -1,6 +1,6 @@
 [project]
 name = "fontvertx"
-version = "1.1.0"
+version = "1.2.0"
 description = "A free, open-source font converter for the desktop and the command line."
 readme = "README.md"
 license = "MIT"
@@ -93,7 +93,7 @@ module-name = "fontvertx"
 [tool.bumpversion]
 # `uv run bump-my-version bump patch|minor|major` updates every copy of the version.
 # Releases are tagged on GitHub, and the bump is committed with the release changes.
-current_version = "1.1.0"
+current_version = "1.2.0"
 commit = false
 tag = false
 # The bump is part of the release changes, which are usually not committed yet.

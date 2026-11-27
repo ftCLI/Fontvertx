@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import threading
 from collections.abc import Callable
@@ -8,24 +9,48 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QEvent, QMimeData, QPoint, QPointF, QRect, QSettings, QSize, Qt, QUrl
-from PySide6.QtGui import QCloseEvent, QDropEvent, QEnterEvent, QFont, QImage, QWheelEvent
+from PySide6.QtCore import (
+    QEvent,
+    QMimeData,
+    QModelIndex,
+    QPoint,
+    QPointF,
+    QRect,
+    QSettings,
+    QSize,
+    Qt,
+    QTimer,
+    QUrl,
+)
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QColor,
+    QDropEvent,
+    QEnterEvent,
+    QFont,
+    QImage,
+    QWheelEvent,
+)
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QBoxLayout,
     QDialog,
     QFileDialog,
+    QHeaderView,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QWidget,
 )
 from shiboken6 import isValid
 
+from fontvertx.gui import column_widths, layout_manager, styles
 from fontvertx.gui import conversion_controller as conversion_controller_module
-from fontvertx.gui import layout_manager, styles
 from fontvertx.gui import scanner as scanner_module
+from fontvertx.gui import widgets as widgets_module
 from fontvertx.gui import window as window_module
 from fontvertx.gui import worker as worker_module
 from fontvertx.gui.conversion_controller import RunOutcome
@@ -689,18 +714,187 @@ def test_column_visibility_rejects_invalid_sender(
         win._set_column_visible(True)
 
 
-def test_optional_columns_menu_persists_visibility(
-    win: ConverterWindow, monkeypatch: pytest.MonkeyPatch
+def _optional_column_actions(menu: QMenu) -> list[QAction]:
+    """The Family and Style entries: after the separator that ends the fixed columns."""
+    actions = menu.actions()
+    separator = next(i for i, action in enumerate(actions) if action.isSeparator())
+    return actions[separator + 1 :]
+
+
+def test_column_menu_lists_every_column(win: ConverterWindow) -> None:
+    actions = win.column_menu.actions()
+    assert [a.text() for a in actions if not a.isSeparator()] == list(win.file_list.model.HEADERS)
+    separator = next(i for i, action in enumerate(actions) if action.isSeparator())
+    fixed, optional = actions[:separator], actions[separator + 1 :]
+    assert [a.text() for a in fixed] == ["Name", "Format", "Outlines", "UPM"]
+    assert all(a.isCheckable() and a.isChecked() and not a.isEnabled() for a in fixed)
+    assert [a.text() for a in optional] == ["Family", "Style"]
+    assert all(a.isCheckable() and a.isEnabled() for a in optional)
+
+
+@pytest.mark.parametrize("rows", [1, 60])
+def test_column_button_sits_in_the_header_corner(
+    win: ConverterWindow, tmp_path: Path, rows: int
 ) -> None:
+    for index in range(rows):
+        path = tmp_path / f"font{index:02}.ttf"
+        win._on_font_found(path, FontInfo(path, "TTF", "TrueType", 1000))
+    win.show()
+    QApplication.processEvents()
+    files, button = win.files, win.files.column_button
+    bar, header, viewport = files.verticalScrollBar(), files.horizontalHeader(), files.viewport()
+    assert button.parentWidget() is files
+    assert button.iconSize() == QSize(18, 18)
+    assert button.toolTip() == button.accessibleName() == "Show columns"
+    for width in (1100, 1400, 950):
+        win.resize(width, win.height())
+        # The button goes back on top on the event-loop pass after the scrollbar shows.
+        QTest.qWait(30)
+        assert bar.isVisible() == (rows > 1)
+        # The corner: 32px whatever the scrollbar, as tall as the header, against the
+        # table's inner right edge; it also covers the band above the scrollbar.
+        geometry = button.geometry()
+        assert button.isVisible()
+        assert geometry.width() == widgets_module.HEADER_CORNER_WIDTH
+        assert geometry.height() == header.height()
+        assert geometry.top() == header.geometry().top()
+        assert geometry.right() == files.contentsRect().right()
+        # Whole: nothing covers it, the filler above the scrollbar included.
+        for x in range(geometry.left(), geometry.right() + 1, 2):
+            assert files.childAt(QPoint(x, geometry.center().y())) is button
+        # The header keeps its end free: 32px, less the scrollbar when it shows. Its
+        # sections end where the button starts and stay over their cells.
+        reserve = widgets_module.HEADER_CORNER_WIDTH - (bar.width() if bar.isVisible() else 0)
+        assert header.reserved == files.header_reserve() == reserve
+        header_end = header.viewport().mapTo(files, QPoint(0, 0)).x() + header.viewport().width()
+        assert header_end == geometry.left()
+        assert header.length() == header.viewport().width() == files.header_width()
+        for column in range(4):
+            assert header.sectionViewportPosition(column) == files.columnViewportPosition(column)
+    # The rows reach the right edge: the strip past the last column is part of the row
+    # (background, separator, selection), and clicking it selects the row.
+    row_height = files.rowHeight(0)
+
+    def pixels(x: int) -> tuple[QColor, QColor]:
+        image = viewport.grab().toImage()
+        scale = image.devicePixelRatio()
+        middle, bottom = row_height // 2, row_height - 1
+        return (
+            image.pixelColor(round(x * scale), round(middle * scale)),
+            image.pixelColor(round(x * scale), round(bottom * scale)),
+        )
+
+    def tail_x() -> int:
+        # From the current width: on a slow machine the viewport can still narrow for the
+        # scrollbar on a later layout pass (the click below runs it), so never keep it.
+        return viewport.width() - 2
+
+    assert tail_x() > header.length()
+    cell_x = files.columnViewportPosition(3) + 2
+    assert pixels(tail_x()) == pixels(cell_x)
+    assert pixels(tail_x())[1] == QColor(LIGHT.row_separator)
+    QTest.mouseClick(viewport, Qt.MouseButton.LeftButton, pos=QPoint(tail_x(), row_height // 2))
+    QApplication.processEvents()
+    assert files.selectionModel().isRowSelected(0, QModelIndex())
+    assert tail_x() > header.length()
+    assert pixels(tail_x())[0] == pixels(cell_x)[0] != QColor(LIGHT.surface)
+    # Only the font list has the button; the instance tree keeps its plain filler.
+    assert win.instance_tree._scrollbar_header.cap.objectName() == "tableScrollbarHeader"
+
+
+def _open_column_menu(win: ConverterWindow, opener: Callable[[], None]) -> dict[str, Any]:
+    """Open the column menu with ``opener``; record its state, toggle Family, close it."""
+    seen: dict[str, Any] = {}
+    menu, button = win.column_menu, win.files.column_button
+
+    def inspect() -> None:
+        seen["visible"] = menu.isVisible()
+        seen["geometry"] = menu.geometry()
+        seen["menu_open"] = button.property("menuOpen")
+        _optional_column_actions(menu)[0].trigger()  # Family
+        menu.hide()
+
+    QTimer.singleShot(50, inspect)
+    opener()
+    # QPushButton opens its menu on a later event-loop pass: wait until it was seen.
+    for _ in range(50):
+        if "visible" in seen:
+            break
+        QTest.qWait(20)
+    QApplication.processEvents()
+    seen["menu_open_after"] = button.property("menuOpen")
+    return seen
+
+
+def _add_font(win: ConverterWindow, tmp_path: Path) -> None:
+    """One font, so the list (not the drop zone) is shown."""
+    path = tmp_path / "font.ttf"
+    win._on_font_found(path, FontInfo(path, "TTF", "TrueType", 1000))
+
+
+def test_column_button_opens_the_menu_and_toggles_a_column(
+    win: ConverterWindow, tmp_path: Path
+) -> None:
+    _add_font(win, tmp_path)
+    win.show()
+    QApplication.processEvents()
+    files, button = win.files, win.files.column_button
+    assert files.isColumnHidden(4)
+    seen = _open_column_menu(win, lambda: QTest.mouseClick(button, Qt.MouseButton.LeftButton))
+    assert seen["visible"] and seen["menu_open"] == "true"
+    assert seen["menu_open_after"] == "false"
+    # Under the button, right edge on the table's right edge.
+    geometry = seen["geometry"]
+    assert geometry.top() == button.mapToGlobal(QPoint(0, button.height())).y()
+    assert geometry.right() + 1 == files.mapToGlobal(QPoint(files.width(), 0)).x()
+    assert not files.isColumnHidden(4)
+    assert win.store.get_bool(window_module.OPTIONAL_FONT_COLUMNS[4][1])
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter])
+def test_column_button_opens_from_the_keyboard(
+    win: ConverterWindow, tmp_path: Path, key: Qt.Key
+) -> None:
+    _add_font(win, tmp_path)
+    win.show()
+    win.activateWindow()
+    QApplication.processEvents()
+    button = win.files.column_button
+    win.files.setFocus()
+    QTest.keyClick(win.files, Qt.Key.Key_Tab)
+    assert win.focusWidget() is button
+    assert button.property("keyboardFocus") == "true"
+    seen = _open_column_menu(win, lambda: QTest.keyClick(button, key))
+    assert seen["visible"] and seen["menu_open"] == "true"
+    assert not win.files.isColumnHidden(4)
+
+
+def test_column_button_style_states() -> None:
+    sheet = styles.build_stylesheet(LIGHT)
+    base = re.search(r"QPushButton#columnMenuButton \{([^}]+)\}", sheet)
+    assert base is not None
+    # Part of the header band: its background and bottom line, no separator before it.
+    assert f"background: {LIGHT.table_header};" in base.group(1)
+    assert f"border-bottom-color: {LIGHT.border};" in base.group(1)
+    assert "border-left:" not in base.group(1)
+    hover = re.search(r"QPushButton#columnMenuButton:hover:enabled[^{]*\{([^}]+)\}", sheet)
+    assert hover is not None and f"background: {LIGHT.ghost_hover};" in hover.group(1)
+    opened = re.search(r'QPushButton#columnMenuButton\[menuOpen="true"\] \{([^}]+)\}', sheet)
+    assert opened is not None and f"background: {LIGHT.accent_tint};" in opened.group(1)
+
+
+def test_optional_columns_menu_persists_visibility(
+    win: ConverterWindow, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _add_font(win, tmp_path)  # the list, not the drop zone: its viewport has a real size
     win.show()
     QApplication.processEvents()
     assert win.font_filter.placeholderText() == window_module.FONT_FILTER_PLACEHOLDER
     header = win.files.horizontalHeader()
     assert header.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu
-    assert [action.text() for action in win.column_menu.actions()] == ["Family", "Style"]
-    assert all(
-        action.isCheckable() and not action.isChecked() for action in win.column_menu.actions()
-    )
+    optional = _optional_column_actions(win.column_menu)
+    assert [action.text() for action in optional] == ["Family", "Style"]
+    assert all(action.isCheckable() and not action.isChecked() for action in optional)
     assert [win.files.isColumnHidden(i) for i in range(6)] == [
         False,
         False,
@@ -714,22 +908,32 @@ def test_optional_columns_menu_persists_visibility(
     monkeypatch.setattr(win.column_menu, "popup", positions.append)
     header.customContextMenuRequested.emit(QPoint(10, 5))
     assert positions == [header.mapToGlobal(QPoint(10, 5))]
-    family, style = win.column_menu.actions()
+    family, style = optional
     family.trigger()
     style.trigger()
     assert not win.files.isColumnHidden(4) and not win.files.isColumnHidden(5)
-    assert header.sectionSize(4) == 140 and header.sectionSize(5) == 140
+    # Family and Style fit their content; Name fills the rest.
+    for column in (4, 5):
+        assert header.sectionSize(column) == win.files._column_layout.content_width(column)
+        assert header.sectionSize(column) <= column_widths.OPTIONAL_COLUMN_MAX_WIDTH
+    others = sum(header.sectionSize(c) for c in range(1, 6))
+    assert header.sectionSize(0) == max(
+        column_widths.FIRST_COLUMN_MIN_WIDTH, win.files.header_width() - others
+    )
     style.trigger()
     assert win.files.isColumnHidden(5)
+    # Family is now last: nothing on its right compensates, so its border is fixed.
+    assert header.sectionResizeMode(4) == QHeaderView.ResizeMode.Fixed
     win._settings.sync()
 
     restarted = ConverterWindow()
     try:
         assert not restarted.files.isColumnHidden(4)
         assert restarted.files.isColumnHidden(5)
-        assert [action.isChecked() for action in restarted.column_menu.actions()] == [True, False]
+        restored = _optional_column_actions(restarted.column_menu)
+        assert [action.isChecked() for action in restored] == [True, False]
         assert all(not restarted.files.isColumnHidden(i) for i in range(4))
-        restarted.column_menu.actions()[0].trigger()
+        restored[0].trigger()
         restarted._settings.sync()
         assert restarted.files.isColumnHidden(4)
     finally:
@@ -1194,6 +1398,8 @@ def test_import_tab_order(win: ConverterWindow, tmp_path: Path) -> None:
     assert win.focusWidget() is win.font_filter
     win.files.setFocus()
     QTest.keyClick(win.files, Qt.Key.Key_Tab)
+    assert win.focusWidget() is win.files.column_button
+    QTest.keyClick(win.files.column_button, Qt.Key.Key_Tab)
     assert win.focusWidget() is win.conversion.combo
 
 
@@ -1212,11 +1418,16 @@ def test_conversion_selector_tab_order_follows_input(
     inputs.setFocus()
     assert win.focusWidget() is inputs
 
-    QTest.keyClick(inputs, Qt.Key.Key_Tab)
+    # The font list is followed by its column menu button (the instance tree has none).
+    last = inputs if inputs is win.instance_tree else win.files.column_button
+    if last is not inputs:
+        QTest.keyClick(inputs, Qt.Key.Key_Tab)
+        assert win.focusWidget() is last
+    QTest.keyClick(last, Qt.Key.Key_Tab)
     focused = win.focusWidget()
     assert focused is win.conversion.combo
     QTest.keyClick(focused, Qt.Key.Key_Tab, Qt.KeyboardModifier.ShiftModifier)
-    assert win.focusWidget() is inputs
+    assert win.focusWidget() is last
 
 
 def test_reset_button_tab_order_sits_between_conversion_and_options(
@@ -3943,7 +4154,7 @@ def test_overwrite_card_text_follows_the_checkbox(win: ConverterWindow) -> None:
 
     assert colors() == (LIGHT.text, LIGHT.text_muted)
     win.overwrite.setChecked(True)
-    assert colors() == (LIGHT.warning, LIGHT.warn_fg)
+    assert colors() == (LIGHT.warn_fg, LIGHT.warn_fg)
     image = win.overwrite_panel.grab().toImage()
     assert image.pixelColor(image.width() - 6, image.height() // 2).name() == LIGHT.warn_panel_bg
     win.overwrite.setChecked(False)

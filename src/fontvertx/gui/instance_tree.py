@@ -27,6 +27,7 @@ from PySide6.QtGui import (
     QFontMetrics,
     QHelpEvent,
     QIcon,
+    QKeyEvent,
     QKeySequence,
     QMouseEvent,
     QPainter,
@@ -42,7 +43,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QGridLayout,
-    QHeaderView,
     QLabel,
     QMenu,
     QMessageBox,
@@ -56,10 +56,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from fontvertx.gui.column_widths import METRIC_EVENTS, fixed_column_widths
+from fontvertx.gui.column_widths import (
+    FIRST_COLUMN_MIN_WIDTH,
+    METRIC_EVENTS,
+    FillColumnLayout,
+    fixed_column_widths,
+)
 from fontvertx.gui.file_list import FontBadgeDelegate, FontRowDelegate, font_row_background
 from fontvertx.gui.icons import material_icon
-from fontvertx.gui.styles import LIGHT, RADIUS_SM, radius_px, tabular_font, ui_font
+from fontvertx.gui.styles import RADIUS_SM, colors, radius_px, tabular_font, ui_font
 from fontvertx.gui.tooltips import wrap_tip
 from fontvertx.gui.widgets import (
     DecimalSpinBox,
@@ -80,7 +85,12 @@ _AXES_ROLE = Qt.ItemDataRole.UserRole + 3
 _OUTLINES_ROLE = Qt.ItemDataRole.UserRole + 4
 # Extra text the filter searches besides the cells: the font path, a skipped row's reason.
 _SEARCH_ROLE = Qt.ItemDataRole.UserRole + 5
+# Position of an instance among its font's rows, in the order they were added.
+_ORDER_ROLE = Qt.ItemDataRole.UserRole + 6
+_FORMAT_COLUMN = 1
 _LOCATION_COLUMN = 4
+# Chip in the Format cell of a custom instance row.
+CUSTOM_CHIP_LABEL = "Custom"
 _UPM_ALIGNMENT = Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
 # The list is edge to edge: nudge the branch chevron right, away from the card edge.
 BRANCH_ICON_OFFSET = 5
@@ -91,6 +101,8 @@ LOCATION_MAX_WIDTH = 360
 # "+ Instance": the inline action painted in the Location cell of a variable font row.
 ADD_ACTION_LABEL = "Instance"
 ADD_ACTION_TOOLTIP = "Add custom instance (Ins)"
+# On every cell of a custom instance row (its "Custom" chip included), and nowhere else.
+CUSTOM_INSTANCE_TOOLTIP = "Double-click or press Enter to edit. Delete to remove."
 ADD_ACTION_HEIGHT = 22
 ADD_ACTION_INSET = 6  # from the left edge of the cell
 ADD_ACTION_PADDING_LEFT = 6
@@ -115,7 +127,7 @@ def add_action_font() -> QFont:
 
 @cache
 def _add_action_icon() -> QIcon:
-    return material_icon("add", LIGHT.accent, ADD_ACTION_GLYPH)
+    return material_icon("add", "accent_text", ADD_ACTION_GLYPH)
 
 
 def add_action_rect(cell: QRect) -> QRect:
@@ -155,9 +167,9 @@ def paint_add_action(painter: QPainter, rect: QRect, *, ghost: bool, pressed: bo
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     if ghost:
         painter.setOpacity(ADD_ACTION_GHOST_OPACITY)
-    border = QColor(LIGHT.accent_border_soft if ghost else LIGHT.accent)
+    border = QColor(colors().accent_border_soft if ghost else colors().accent)
     painter.setPen(QPen(border, 1))
-    painter.setBrush(QColor(LIGHT.row_selection if pressed else LIGHT.surface))
+    painter.setBrush(QColor(colors().row_selection if pressed else colors().surface))
     radius = radius_px(RADIUS_SM)
     painter.drawRoundedRect(QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
     glyph = QRect(
@@ -168,12 +180,24 @@ def paint_add_action(painter: QPainter, rect: QRect, *, ghost: bool, pressed: bo
     )
     _add_action_icon().paint(painter, glyph, Qt.AlignmentFlag.AlignCenter)
     painter.setFont(add_action_font())
-    painter.setPen(QColor(LIGHT.accent))
+    painter.setPen(QColor(colors().accent_text))
     label = QRect(glyph.right() + 1 + ADD_ACTION_GLYPH_GAP, rect.top(), rect.width(), rect.height())
     painter.drawText(
         label, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, ADD_ACTION_LABEL
     )
     painter.restore()
+
+
+def _is_custom_instance(index: QModelIndex | QPersistentModelIndex) -> bool:
+    if not index.isValid() or not index.parent().isValid():
+        return False
+    return bool(index.sibling(index.row(), 0).data(_CUSTOM_ROLE))
+
+
+# Row types of the tree (see InstanceTree.row_kind).
+ROW_FONT = "font"
+ROW_CUSTOM = "custom"
+ROW_INSTANCE = "instance"  # a named or default instance
 
 
 class InstanceRowDelegate(FontRowDelegate):
@@ -247,6 +271,14 @@ class InstanceRowDelegate(FontRowDelegate):
 
 class InstanceBadgeDelegate(InstanceRowDelegate, FontBadgeDelegate):
     paint = FontBadgeDelegate.paint
+
+    def initStyleOption(
+        self, option: QStyleOptionViewItem, index: QModelIndex | QPersistentModelIndex
+    ) -> None:
+        super().initStyleOption(option, index)
+        # Painted only: the cell itself stays empty, so sorting and filtering ignore it.
+        if index.column() == _FORMAT_COLUMN and _is_custom_instance(index):
+            option.text = CUSTOM_CHIP_LABEL
 
 
 def _number(value: float) -> str:
@@ -397,6 +429,46 @@ class CustomInstanceDialog(QDialog):
         self._reserve_preview_height()
 
 
+class _InstanceItem(QTreeWidgetItem):
+    """An instance row. Sorting the tree orders the fonts; under each font the named
+    instances always come first, in the font's order. Custom instances follow: sorted by
+    their location (in the sort direction) when the tree is sorted by Location, otherwise
+    in the order they were added."""
+
+    def __lt__(self, other: QTreeWidgetItem) -> bool:
+        tree = self.treeWidget()
+        if tree is None or self.data(0, _ORDER_ROLE) is None or other.data(0, _ORDER_ROLE) is None:
+            return super().__lt__(other)
+        header = tree.header()
+        ascending = header.sortIndicatorOrder() == Qt.SortOrder.AscendingOrder
+        by_location = header.sortIndicatorSection() == _LOCATION_COLUMN
+        # Qt puts self first when self < other (ascending) or other < self (descending):
+        # answer with the order the rows should have on screen.
+        if ascending:
+            return _shown_before(self, other, ascending, by_location)
+        return _shown_before(other, self, ascending, by_location)
+
+
+def _shown_before(
+    item: QTreeWidgetItem, other: QTreeWidgetItem, ascending: bool, by_location: bool
+) -> bool:
+    """Whether instance row ``item`` is shown above ``other``, its sibling."""
+    custom, other_custom = bool(item.data(0, _CUSTOM_ROLE)), bool(other.data(0, _CUSTOM_ROLE))
+    if custom != other_custom:
+        return not custom  # named instances first
+    if custom and by_location:
+        mine = _location_key(item.data(0, _SPEC_ROLE))
+        theirs = _location_key(other.data(0, _SPEC_ROLE))
+        if mine != theirs:
+            return mine < theirs if ascending else mine > theirs
+    return bool(item.data(0, _ORDER_ROLE) < other.data(0, _ORDER_ROLE))
+
+
+def _location_key(spec: InstanceSpec) -> tuple[float, ...]:
+    """Axis values in axis order: compared as numbers, so 150 sorts before 1000."""
+    return tuple(value for _tag, value in spec.coordinates)
+
+
 class InstanceTree(QTreeWidget):
     """Variable fonts as parents, their exportable instances as checkable children."""
 
@@ -420,7 +492,8 @@ class InstanceTree(QTreeWidget):
             )
         self.headerItem().setTextAlignment(self._UPM_COLUMN, _UPM_ALIGNMENT)
         self.headerItem().setToolTip(
-            _LOCATION_COLUMN, "Axis coordinates. Drag the column divider to resize."
+            _LOCATION_COLUMN,
+            "Axis coordinates. Drag the Font / instance column divider to resize.",
         )
         self.setRootIsDecorated(True)
         self.setMouseTracking(True)
@@ -439,21 +512,25 @@ class InstanceTree(QTreeWidget):
         self._scrollbar_header = ScrollbarHeaderFiller(self, header)
         for column in (1, 2):
             self.setItemDelegateForColumn(column, InstanceBadgeDelegate(self))
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in range(1, self.columnCount()):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
         self.update_column_widths()
+        # Font / instance is dragged; Location fills the rest (see FillColumnLayout).
+        self._column_layout = FillColumnLayout(
+            self,
+            header,
+            fill=0,
+            fixed=self.FIXED_COLUMNS.values(),
+            minimums={0: FIRST_COLUMN_MIN_WIDTH, _LOCATION_COLUMN: LOCATION_MIN_WIDTH},
+            default_minimum=LOCATION_MIN_WIDTH,
+        )
         header.resizeSection(_LOCATION_COLUMN, LOCATION_MIN_WIDTH)
         self.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self._filter_text = ""
         self._hide_incompatible = False
         self._memory: dict[Path, _Memory] = {}
-        self._muted_color = QColor(LIGHT.text_disabled)
         self._branch_icons = {
             (expanded, hovered): material_icon(
                 "expand_more" if expanded else "chevron_right",
-                LIGHT.text if hovered else LIGHT.text_muted,
+                "text" if hovered else "text_muted",
                 18,
             )
             for expanded in (False, True)
@@ -651,11 +728,11 @@ class InstanceTree(QTreeWidget):
     ) -> None:
         super().drawRow(painter, option, index)
         painter.save()
-        painter.setPen(QColor(LIGHT.row_separator))
+        painter.setPen(QColor(colors().row_separator))
         painter.drawLine(0, option.rect.bottom(), self.viewport().width(), option.rect.bottom())
         current = self.currentIndex()
         if self.hasFocus() and current.row() == index.row() and current.parent() == index.parent():
-            painter.fillRect(0, option.rect.top(), 2, option.rect.height(), QColor(LIGHT.accent))
+            painter.fillRect(0, option.rect.top(), 2, option.rect.height(), QColor(colors().accent))
         painter.restore()
 
     def drawBranches(
@@ -674,6 +751,27 @@ class InstanceTree(QTreeWidget):
         icon_hovered = icon_rect.contains(self.viewport().mapFromGlobal(QCursor.pos()))
         icon = self._branch_icons[(self.isExpanded(index), icon_hovered)]
         icon.paint(painter, icon_rect, Qt.AlignmentFlag.AlignCenter)
+
+    @property
+    def _muted_color(self) -> QColor:
+        return QColor(colors().text_disabled)
+
+    def refresh_theme(self) -> None:
+        """Re-apply the item colors set when the rows were added (after a theme switch)."""
+        muted = self._muted_color
+        location = QColor(colors().text_muted)
+        was_blocked = self.blockSignals(True)
+        for index in range(self.topLevelItemCount()):
+            item = self.topLevelItem(index)
+            if item is None:
+                continue
+            if item.data(0, _PATH_ROLE) is None:  # skipped font
+                for column in range(self.columnCount()):
+                    item.setForeground(column, muted)
+            else:
+                item.setForeground(_LOCATION_COLUMN, location)
+        self.blockSignals(was_blocked)
+        self.viewport().update()
 
     def add_skipped(self, path: Path, label: str, reason: str, info: FontInfo) -> None:
         """List a font that cannot be used, greyed out and with the reason."""
@@ -706,7 +804,7 @@ class InstanceTree(QTreeWidget):
             | Qt.ItemFlag.ItemIsAutoTristate
         )
         parent.setToolTip(0, wrap_tip(str(path)))
-        parent.setForeground(_LOCATION_COLUMN, QColor(LIGHT.text_muted))
+        parent.setForeground(_LOCATION_COLUMN, QColor(colors().text_muted))
         # Right-aligned so the summary stays put when "+ Instance" appears beside it.
         parent.setTextAlignment(
             _LOCATION_COLUMN, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -759,6 +857,11 @@ class InstanceTree(QTreeWidget):
             QTimer.singleShot(0, self, self.update_column_widths)
         return super().event(event)
 
+    def _fit_location_column(self) -> None:
+        """Location fits its content within its bounds; Font / instance takes the rest."""
+        width = max(self.sizeHintForColumn(_LOCATION_COLUMN), LOCATION_MIN_WIDTH)
+        self.header().resizeSection(_LOCATION_COLUMN, min(width, LOCATION_MAX_WIDTH))
+
     @staticmethod
     def _row_texts(label: str, info: FontInfo, location: str) -> list[str]:
         upm = "Mixed" if info.upm is None else str(info.upm)
@@ -769,7 +872,12 @@ class InstanceTree(QTreeWidget):
     ) -> QTreeWidgetItem:
         name = spec.name or ("Default instance" if not spec.coordinates else "Custom instance")
         location = location_text(spec.coordinates)
-        child = QTreeWidgetItem([name, "", "", "", location])
+        child = _InstanceItem([name, "", "", "", location])
+        child.setData(
+            0,
+            _ORDER_ROLE,
+            max((row.data(0, _ORDER_ROLE) for row in self._children(parent)), default=-1) + 1,
+        )
         child.setFlags(
             Qt.ItemFlag.ItemIsEnabled
             | Qt.ItemFlag.ItemIsSelectable
@@ -779,15 +887,11 @@ class InstanceTree(QTreeWidget):
         child.setData(0, _SPEC_ROLE, spec)
         child.setData(0, _CUSTOM_ROLE, custom)
         child.setFont(_LOCATION_COLUMN, tabular_font())
+        if custom:
+            for column in range(self.columnCount()):
+                child.setToolTip(column, CUSTOM_INSTANCE_TOOLTIP)
         parent.addChild(child)
         return child
-
-    def _fit_location_column(self) -> None:
-        self.resizeColumnToContents(_LOCATION_COLUMN)
-        self.header().resizeSection(
-            _LOCATION_COLUMN,
-            min(max(self.columnWidth(_LOCATION_COLUMN), LOCATION_MIN_WIDTH), LOCATION_MAX_WIDTH),
-        )
 
     def set_hide_incompatible(self, hide: bool) -> None:
         """Show or hide fonts that cannot be exported as variable instances."""
@@ -853,9 +957,15 @@ class InstanceTree(QTreeWidget):
         if path is None:
             return
         children = self._children(font)
+        # Custom instances in the order they were added, not as shown (a sort by Location
+        # reorders them): a rescan rebuilds them in that order.
+        custom = sorted(
+            (c for c in children if c.data(0, _CUSTOM_ROLE)),
+            key=lambda c: c.data(0, _ORDER_ROLE),
+        )
         self._memory[path] = (
             {c.data(0, _SPEC_ROLE) for c in children if c.checkState(0) == Qt.CheckState.Checked},
-            [c.data(0, _SPEC_ROLE) for c in children if c.data(0, _CUSTOM_ROLE)],
+            [c.data(0, _SPEC_ROLE) for c in custom],
         )
 
     def clear_fonts(self) -> None:
@@ -1056,9 +1166,39 @@ class InstanceTree(QTreeWidget):
         self.set_filter(self._filter_text)
         self.checksChanged.emit()
 
+    @staticmethod
+    def row_kind(item: QTreeWidgetItem | None) -> str | None:
+        """ROW_FONT, ROW_CUSTOM, ROW_INSTANCE, or None for a skipped font (or no row)."""
+        if item is None:
+            return None
+        if item.parent() is None:
+            return ROW_FONT if item.data(0, _PATH_ROLE) is not None else None
+        return ROW_CUSTOM if item.data(0, _CUSTOM_ROLE) else ROW_INSTANCE
+
     def _on_item_double_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
-        if item.data(0, _CUSTOM_ROLE):
+        # A font row expands or collapses (QTreeView's expandsOnDoubleClick).
+        if self.row_kind(item) == ROW_CUSTOM:
             self.setCurrentItem(item)
+            self.edit_custom()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (
+            event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier
+        ):
+            self._activate_current()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _activate_current(self) -> None:
+        """Enter: a font expands or collapses, a custom instance opens Edit, others nothing."""
+        item = self.currentItem()
+        kind = self.row_kind(item)
+        if item is None:
+            return
+        if kind == ROW_FONT:
+            item.setExpanded(not item.isExpanded())
+        elif kind == ROW_CUSTOM:
             self.edit_custom()
 
     def remove_custom(self) -> None:
@@ -1079,20 +1219,24 @@ class InstanceTree(QTreeWidget):
         if item is None:
             return
         self.setCurrentItem(item)
+        # Only the actions that apply to the row; named and default instances have none.
+        kind = self.row_kind(item)
+        if kind == ROW_FONT:
+            entries = [("Add custom instance…", self.add_custom)]
+        elif kind == ROW_CUSTOM:
+            entries = [
+                ("Edit custom instance…", self.edit_custom),
+                ("Remove instance", self.remove_custom),
+            ]
+        else:
+            return
         menu = QMenu(self)
-        add = menu.addAction("Add custom instance…")
-        add.setEnabled(self.can_add())
-        edit = menu.addAction("Edit custom instance…")
-        edit.setEnabled(self.can_remove())
-        remove = menu.addAction("Remove instance")
-        remove.setEnabled(self.can_remove())
+        actions = [(menu.addAction(label), handler) for label, handler in entries]
         chosen = menu.exec(self.viewport().mapToGlobal(position))
-        if chosen is add:
-            self.add_custom()
-        elif chosen is edit:
-            self.edit_custom()
-        elif chosen is remove:
-            self.remove_custom()
+        for action, handler in actions:
+            if chosen is action:
+                handler()
+                break
 
     def _show_current_menu(self) -> None:
         item = self.currentItem()

@@ -415,6 +415,98 @@ def test_add_custom_instance_selects_and_remembers_it(
     assert child_names(tree) == ["Regular", "Bold", "Custom instance"]
 
 
+def test_instance_order_under_a_sorted_tree(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sorting orders the fonts. Under each font the named instances come first, in the
+    font's order; custom ones follow, sorted by location when the tree is sorted by
+    Location (in its direction), otherwise in the order they were added."""
+    sorted_tree = InstanceTree()  # sorting on, as in the window
+    assert sorted_tree.isSortingEnabled()
+    sorted_tree.add_font(FONT_PATH, "Var", variable_info())
+    sorted_tree.add_font(Path("Another.ttf"), "Another", variable_info(Path("Another.ttf")))
+    values = iter([555, 150, 800])
+
+    def fake_exec(self: CustomInstanceDialog) -> int:
+        self._boxes["wght"].setValue(next(values))
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(CustomInstanceDialog, "exec", fake_exec)
+    font = next(
+        sorted_tree.topLevelItem(i)
+        for i in range(sorted_tree.topLevelItemCount())
+        if sorted_tree.topLevelItem(i).text(0) == "Var"
+    )
+    for _ in range(3):
+        sorted_tree.setCurrentItem(font)
+        sorted_tree.add_custom()
+
+    def rows() -> list[tuple[str, str]]:
+        return [(font.child(i).text(0), font.child(i).text(4)) for i in range(font.childCount())]
+
+    def expected(*custom_weights: int) -> list[tuple[str, str]]:
+        named = [("Regular", 400), ("Bold", 700)]
+        custom = [("Custom instance", weight) for weight in custom_weights]
+        return [
+            (name, location_text((("wght", weight), ("wdth", 100))))
+            for name, weight in named + custom
+        ]
+
+    added = expected(555, 150, 800)
+    assert rows() == added
+    for column, order, result in (
+        (0, Qt.SortOrder.DescendingOrder, added),
+        (4, Qt.SortOrder.AscendingOrder, expected(150, 555, 800)),
+        (4, Qt.SortOrder.DescendingOrder, expected(800, 555, 150)),
+        (1, Qt.SortOrder.AscendingOrder, added),
+        (0, Qt.SortOrder.AscendingOrder, added),
+    ):
+        sorted_tree.sortByColumn(column, order)
+        assert rows() == result, (column, order)
+    # The fonts themselves follow the sort.
+    sorted_tree.sortByColumn(0, Qt.SortOrder.DescendingOrder)
+    assert [sorted_tree.topLevelItem(i).text(0) for i in range(2)] == ["Var", "Another"]
+
+
+@pytest.mark.parametrize("order", [Qt.SortOrder.AscendingOrder, Qt.SortOrder.DescendingOrder])
+def test_rescan_preserves_custom_insertion_order(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, order: Qt.SortOrder
+) -> None:
+    tree = InstanceTree()
+    tree.add_font(FONT_PATH, "Var", variable_info())
+    values = iter([555, 150, 800])
+
+    def fake_exec(self: CustomInstanceDialog) -> int:
+        self._boxes["wght"].setValue(next(values))
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(CustomInstanceDialog, "exec", fake_exec)
+    font = tree.topLevelItem(0)
+    for _ in range(3):
+        tree.setCurrentItem(font)
+        tree.add_custom()
+
+    tree.sortByColumn(4, order)
+    unchecked = font.child(2).data(0, tree_module._SPEC_ROLE)
+    font.child(2).setCheckState(0, Qt.CheckState.Unchecked)
+    tree.clear_fonts()
+    tree.add_font(FONT_PATH, "Var", variable_info())
+    tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+
+    font = tree.topLevelItem(0)
+    custom = [font.child(i) for i in range(2, font.childCount())]
+    assert [row.data(0, tree_module._SPEC_ROLE).coordinates[0][1] for row in custom] == [
+        555,
+        150,
+        800,
+    ]
+    assert [
+        row.data(0, tree_module._SPEC_ROLE)
+        for row in custom
+        if row.checkState(0) == Qt.CheckState.Unchecked
+    ] == [unchecked]
+
+
 @pytest.mark.parametrize("accepted", [True, False])
 def test_custom_instance_dialog_is_deleted_once_closed(
     tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, accepted: bool
@@ -540,44 +632,166 @@ def test_remove_custom_instance(tree: InstanceTree, monkeypatch: pytest.MonkeyPa
     assert actions
 
 
-def test_context_menu_actions(tree: InstanceTree, monkeypatch: pytest.MonkeyPatch) -> None:
+class FakeMenu:
+    """Stands in for QMenu: records the labels and returns the ``choice`` action."""
+
+    shown: list[list[str]] = []
+    choice: int | None = None
+
+    def __init__(self, parent: Any) -> None:
+        self.labels: list[str] = []
+        self.actions: list[object] = []
+
+    def addAction(self, text: str) -> Any:
+        action = object()
+        self.labels.append(text)
+        self.actions.append(action)
+        return action
+
+    def exec(self, pos: Any) -> Any:
+        FakeMenu.shown.append(self.labels)
+        return None if FakeMenu.choice is None else self.actions[FakeMenu.choice]
+
+
+@pytest.fixture
+def fake_menu(monkeypatch: pytest.MonkeyPatch) -> type[FakeMenu]:
+    FakeMenu.shown = []
+    FakeMenu.choice = None
+    monkeypatch.setattr(tree_module, "QMenu", FakeMenu)
+    return FakeMenu
+
+
+def _tree_with_custom(tree: InstanceTree, monkeypatch: pytest.MonkeyPatch) -> QTreeWidgetItem:
+    """Add one custom instance (font.child(2)) and show the expanded tree."""
+    stub_dialog(monkeypatch, accepted=True)
+    font = tree.topLevelItem(0)
+    tree.setCurrentItem(font)
+    tree.add_custom()
+    tree.expandAll()
+    tree.show()
+    QApplication.processEvents()
+    return font
+
+
+def test_context_menu_shows_only_the_row_actions(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, fake_menu: type[FakeMenu]
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    named, custom = font.child(0), font.child(2)
     calls: list[str] = []
     monkeypatch.setattr(tree, "add_custom", lambda: calls.append("add"))
     monkeypatch.setattr(tree, "edit_custom", lambda: calls.append("edit"))
     monkeypatch.setattr(tree, "remove_custom", lambda: calls.append("remove"))
-    tree.expandAll()
-    tree.show()
-    point = tree.visualItemRect(tree.topLevelItem(0)).center()
-    choice: list[int | None] = [None]
 
-    class FakeMenu:
-        def __init__(self, parent: Any) -> None:
-            self.actions: list[object] = []
+    def point(item: QTreeWidgetItem) -> QPoint:
+        return tree.visualItemRect(item).center()
 
-        def addAction(self, text: str) -> Any:
-            action = FakeAction()
-            self.actions.append(action)
-            return action
+    tree._show_menu(point(font))
+    tree._show_menu(point(custom))
+    tree._show_menu(point(named))
+    assert fake_menu.shown == [
+        ["Add custom instance…"],
+        ["Edit custom instance…", "Remove instance"],
+    ]
+    assert calls == []
 
-        def exec(self, pos: Any) -> Any:
-            return None if choice[0] is None else self.actions[choice[0]]
-
-    class FakeAction:
-        def setEnabled(self, enabled: bool) -> None:
-            pass
-
-    monkeypatch.setattr(tree_module, "QMenu", FakeMenu)
-
-    for index, expected in enumerate(("add", "edit", "remove")):
-        choice[0] = index
-        tree._show_menu(point)
+    for item, choice, expected in (
+        (font, 0, "add"),
+        (custom, 0, "edit"),
+        (custom, 1, "remove"),
+    ):
+        fake_menu.choice = choice
+        tree._show_menu(point(item))
         assert calls[-1] == expected
-
-    choice[0] = None
-    tree._show_menu(point)
     assert len(calls) == 3
+
     tree._show_menu(tree.viewport().rect().bottomRight())
     assert len(calls) == 3
+
+
+def test_keyboard_context_menu_matches_the_row(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, fake_menu: type[FakeMenu]
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    tree.setFocus()
+    for item in (font, font.child(2), font.child(0)):
+        tree.setCurrentItem(item)
+        QTest.keyClick(tree, Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)
+    assert fake_menu.shown == [
+        ["Add custom instance…"],
+        ["Edit custom instance…", "Remove instance"],
+    ]
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+def test_enter_acts_on_each_row_type(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch, key: Qt.Key
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    edits: list[QTreeWidgetItem | None] = []
+    monkeypatch.setattr(tree, "edit_custom", lambda: edits.append(tree.currentItem()))
+    tree.setFocus()
+
+    tree.setCurrentItem(font)
+    QTest.keyClick(tree, key)
+    assert not font.isExpanded()
+    QTest.keyClick(tree, key)
+    assert font.isExpanded()
+    assert edits == []
+
+    named = font.child(0)
+    tree.setCurrentItem(named)
+    QTest.keyClick(tree, key)
+    assert edits == []
+    assert font.isExpanded()
+    assert tree.currentItem() is named
+
+    custom = font.child(2)
+    tree.setCurrentItem(custom)
+    QTest.keyClick(tree, key)
+    assert edits == [custom]
+
+
+def test_double_click_acts_on_each_row_type(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    edits: list[QTreeWidgetItem | None] = []
+    monkeypatch.setattr(tree, "edit_custom", lambda: edits.append(tree.currentItem()))
+
+    tree.itemDoubleClicked.emit(font.child(0), 0)
+    assert edits == []
+    tree.itemDoubleClicked.emit(font.child(2), 0)
+    assert edits == [font.child(2)]
+    tree.itemDoubleClicked.emit(font, 0)
+    assert edits == [font.child(2)]
+    assert tree.expandsOnDoubleClick()
+
+
+def test_custom_chip_on_custom_instances_only(
+    tree: InstanceTree, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    font = _tree_with_custom(tree, monkeypatch)
+    column = tree_module._FORMAT_COLUMN
+    delegate = tree.itemDelegateForColumn(column)
+    assert isinstance(delegate, tree_module.InstanceBadgeDelegate)
+
+    def chip(item: QTreeWidgetItem) -> str:
+        option = QStyleOptionViewItem()
+        delegate.initStyleOption(option, tree.indexFromItem(item, column))
+        return option.text
+
+    assert chip(font) == "SFNT"
+    assert chip(font.child(0)) == ""
+    assert chip(font.child(1)) == ""
+    assert chip(font.child(2)) == tree_module.CUSTOM_CHIP_LABEL
+    # Painted only: the cell stays empty, so the filter and sorting ignore it.
+    assert font.child(2).text(column) == ""
+    tree.set_filter("custom")
+    assert not font.child(2).isHidden()
+    assert font.child(0).isHidden()
+    tree.set_filter("")
+    assert tree.grab().toImage().width() > 0
 
 
 def test_keyboard_context_menu_opens_for_selected_instance(
@@ -927,6 +1141,52 @@ def test_location_column_fits_action_and_summary(tree: InstanceTree, app_font: N
     tree.header().resizeSection(tree_module._LOCATION_COLUMN, 300)
     tree.add_font(Path("Second.ttf"), "Second", variable_info(Path("Second.ttf")))
     assert tree.columnWidth(tree_module._LOCATION_COLUMN) >= tree_module.LOCATION_MIN_WIDTH
+
+
+def test_font_column_fills_and_location_keeps_its_width(tree: InstanceTree) -> None:
+    _shown_tree(tree)
+    header = tree.header()
+    location = tree_module._LOCATION_COLUMN
+
+    def font_fills() -> bool:
+        others = sum(header.sectionSize(c) for c in range(1, tree.columnCount()))
+        return header.sectionSize(0) == tree.viewport().width() - others
+
+    width = header.sectionSize(location)
+    assert tree_module.LOCATION_MIN_WIDTH <= width <= tree_module.LOCATION_MAX_WIDTH
+    assert font_fills()
+    tree.resize(1000, 300)
+    QApplication.processEvents()
+    assert header.sectionSize(location) == width and font_fills()
+    tree.add_font(Path("Second.ttf"), "Second", variable_info(Path("Second.ttf")))
+    assert font_fills()
+    # Dragging the Font / instance border: Location compensates, total width unchanged.
+    start = header.sectionViewportPosition(0) + header.sectionSize(0) - 1
+    before = header.sectionSize(location)
+    for kind, x, buttons in (
+        (QEvent.Type.MouseButtonPress, start, Qt.MouseButton.LeftButton),
+        (QEvent.Type.MouseMove, start - 50, Qt.MouseButton.LeftButton),
+        (QEvent.Type.MouseButtonRelease, start - 50, Qt.MouseButton.NoButton),
+    ):
+        pos = QPointF(x, header.height() / 2)
+        button = (
+            Qt.MouseButton.NoButton if kind == QEvent.Type.MouseMove else Qt.MouseButton.LeftButton
+        )
+        QApplication.sendEvent(
+            header.viewport(),
+            QMouseEvent(
+                kind,
+                pos,
+                header.viewport().mapToGlobal(pos),
+                button,
+                buttons,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+    assert header.sectionSize(location) == before + 50
+    assert font_fills()
+    assert tree.horizontalScrollBar().maximum() == 0
+    tree.close()
 
 
 def test_summary_text_does_not_move_when_the_action_appears(

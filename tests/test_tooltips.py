@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from PySide6.QtGui import QFontMetrics, QPalette, Qt
-from PySide6.QtWidgets import QApplication, QToolTip
+from pathlib import Path
 
-from fontvertx.gui import tooltips
+import pytest
+from PySide6.QtCore import QSettings
+from PySide6.QtGui import QFontMetrics, QPalette, Qt
+from PySide6.QtWidgets import QApplication, QDialog, QToolTip
+
+from fontvertx.gui import instance_tree, tooltips
+from fontvertx.gui import window as window_module
+from fontvertx.gui.instance_tree import CustomInstanceDialog, InstanceTree
 from fontvertx.gui.styles import LIGHT, UI_FONT_FAMILY
+from fontvertx.inspection import AxisInfo, FontInfo, NamedInstanceInfo
 
 BACKSLASH = chr(92)
 
@@ -83,3 +90,52 @@ def test_wrap_tip_keeps_existing_line_breaks_and_stays_plain(qapp: QApplication)
     assert tooltips.wrap_tip(text) == text
     for sample in (text, TOLERANCE):
         assert not Qt.mightBeRichText(tooltips.wrap_tip(sample))
+
+
+def test_font_table_and_instance_tree_have_no_widget_tooltips(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A widget-level tooltip shows everywhere, the empty space under the rows included.
+    ini = tmp_path / "settings.ini"
+    monkeypatch.setattr(
+        window_module, "QSettings", lambda: QSettings(str(ini), QSettings.Format.IniFormat)
+    )
+    win = window_module.ConverterWindow()
+    assert win.files.toolTip() == ""
+    assert win.instance_tree.toolTip() == ""
+    # Optional columns are chosen from the "Show columns" button, not the header.
+    assert win.files.horizontalHeader().toolTip() == "Click to sort."
+
+
+def test_only_custom_instance_rows_have_the_edit_tooltip(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = Path("Var.ttf")
+    info = FontInfo(
+        path,
+        "SFNT",
+        "TrueType",
+        1000,
+        variable=True,
+        axes=(AxisInfo("wght", 100, 400, 900),),
+        instances=(NamedInstanceInfo("Regular", (("wght", 400),)),),
+    )
+    tree = InstanceTree()
+    tree.setSortingEnabled(False)
+    tree.add_font(path, "Var", info)
+    font = tree.topLevelItem(0)
+    assert font is not None
+    tree.setCurrentItem(font)
+    monkeypatch.setattr(CustomInstanceDialog, "exec", lambda _self: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(CustomInstanceDialog, "coordinates", lambda _self: (("wght", 555.0),))
+    tree.add_custom()
+    named, custom = font.child(0), font.child(1)
+    assert named is not None and custom is not None
+    assert custom.data(0, instance_tree._CUSTOM_ROLE)
+    columns = range(tree.columnCount())
+    expected = "Double-click or press Enter to edit. Delete to remove."
+    # Every cell of the custom row, the Format cell with the "Custom" chip included.
+    assert all(custom.toolTip(column) == expected for column in columns)
+    assert all(named.toolTip(column) == "" for column in columns)
+    assert font.toolTip(0) == str(path)
+    assert all(font.toolTip(column) == "" for column in columns if column)

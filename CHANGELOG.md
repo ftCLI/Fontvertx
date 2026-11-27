@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.2.0
+
+- Dark theme: the window follows the system's light or dark appearance (Windows, macOS
+  and Linux desktops that report it) and switches at once when it changes, during a
+  conversion too. The dark theme ("Ardesia") uses slate-grey cards on a near-black page
+  with a brighter blue for accents; errors, warnings and a paused run share one amber.
+  There is no theme setting in the app.
+- The Format, Outlines and UPM columns could come out narrower when measured while the
+  first fonts were being scanned, and widen later; they now always keep room for the sort
+  arrow.
+- The headers of the font table and of the instance list show thin dividers between
+  columns.
+- Column resizing is more natural: the divider follows the pointer, and the next
+  resizable column to its right gives or takes the space, so no horizontal scrollbar
+  appears. Format, Outlines and UPM have a fixed width that fits their content; Name
+  (Font / instance) fills the remaining space; Family and Style are as wide as their
+  content. Double-click a divider to fit the column to its content.
+- A Show columns button at the right end of the font table header shows the Family and
+  Style columns (right-clicking the header still works).
+- Instance list: custom instances are marked with a Custom chip. The context menu shows
+  only the actions that apply: Add custom instance… on a font, Edit and Remove on a custom
+  instance, none on named instances. Enter expands or collapses a font and edits a custom
+  instance.
+- Instance list: under each font, the named instances appear in the font's own order,
+  followed by the custom instances: sorted by location when the list is sorted by
+  Location, otherwise in the order they were added. They used to be sorted by name, which
+  put each new custom instance in a seemingly random place.
+- A paused conversion now shows its progress bar and icons in amber, like the rest of the
+  paused footer, instead of grey. Warning colors use a single amber hue.
+- Windows: drop-down lists no longer show black square corners for an instant when they
+  open.
+- The help tooltips that appeared anywhere over the font table and the instance list,
+  empty space included, are gone; hovering a custom instance tells how to edit or remove
+  it.
+
 ## 1.1.0
 
 - The conversion now runs in the footer of the main window: progress, the file being
